@@ -1,0 +1,4 @@
+credentials.json
+python test_local.py
+.env
+.venv/
