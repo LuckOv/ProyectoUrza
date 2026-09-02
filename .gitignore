@@ -4,4 +4,3 @@ credentials.json
 __pycache__/
 *.pyc
 key.txt
-python test_local.py
