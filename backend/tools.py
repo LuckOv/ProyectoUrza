@@ -1,9 +1,13 @@
 import urllib.parse
+from pathlib import Path
+
 import pandas as pd
 import requests
 from langchain_core.tools import tool
 
-CSV_PATH = "inventario.csv"
+# Anclado a la carpeta de este archivo, no al directorio desde donde se lanza
+# el proceso: así funciona igual con uvicorn, con el test local o desde la raíz.
+CSV_PATH = Path(__file__).parent / "inventario.csv"
 
 # Cabecera obligatoria que exige la API de Scryfall para no bloquear la petición
 HEADERS = {

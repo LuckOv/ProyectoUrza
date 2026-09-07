@@ -1,0 +1,241 @@
+:root {
+  --crema: #f5e7cc;
+  --crema-apagada: #cbb08a;
+  --tinta: #241209;
+  --oro: #d4af6e;
+  --rivet: #d9722e;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;              /* la página es un rectángulo fijo */
+}
+
+body {
+  font-family: "Spectral", Georgia, serif;
+  color: var(--crema);
+  background: #2a1a10;
+}
+
+/* Marco de fondo. Se estira a la ventana para que el borde ornamentado
+   quede siempre pegado a los cuatro lados. */
+.escena {
+  position: relative;
+  height: 100%;
+  background-image: url("/marco.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  display: flex;
+  justify-content: center;
+}
+
+/* La carta holográfica vive detrás de todo, corrida a la derecha para no
+   pelearse con el texto. Si la querés centrada, cambiá right por left: 50%
+   y sumá transform: translate(-50%, -50%). */
+.holo {
+  position: absolute;
+  top: 50%;
+  right: 6vw;
+  transform: translateY(-50%);
+  width: 30vh;
+  height: 92vh;
+  background-image: url("/urza-holo.webp");
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Aparición esporádica: entra, cruza y se va. Detrás de todo. */
+.serpiente {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: auto;
+  opacity: 0;
+  pointer-events: none;
+  animation: cruzar 7s ease-out forwards;
+}
+/* Entra desde afuera del borde izquierdo y avanza hacia el centro. */
+@keyframes cruzar {
+  0%   { opacity: 0;    transform: translateX(-22%); }
+  15%  { opacity: 0.45; }
+  78%  { opacity: 0.45; }
+  100% { opacity: 0;    transform: translateX(6%); }
+}
+
+.centro {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 100%);
+  height: 100%;
+  padding: 6vh 24px 5vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.centro.vacio { justify-content: center; }
+
+.hero {
+  font-size: clamp(1.4rem, 3.4vw, 2.1rem);
+  font-weight: 400;
+  text-align: center;
+  margin: 0 0 26px;
+  text-shadow: 0 2px 12px rgba(20, 10, 4, 0.75);
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-right: 6px;
+}
+.centro.vacio .scroll { flex: 0 0 auto; }
+.scroll::-webkit-scrollbar { width: 8px; }
+.scroll::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 110, 0.4);
+  border-radius: 4px;
+}
+
+/* --- mensajes --- */
+.msg {
+  max-width: 82%;
+  padding: 11px 16px;
+  margin: 6px 0;
+  border-radius: 14px;
+  line-height: 1.6;
+  font-size: 0.97rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  backdrop-filter: blur(6px);
+}
+.msg.jugador {
+  align-self: flex-end;
+  background: rgba(48, 26, 14, 0.86);
+  border: 1px solid rgba(212, 175, 110, 0.35);
+  color: var(--crema);
+}
+.msg.urza {
+  align-self: flex-start;
+  background: rgba(247, 238, 220, 0.94);
+  border: 1px solid rgba(120, 88, 46, 0.4);
+  color: var(--tinta);
+}
+.msg.falla {
+  align-self: flex-start;
+  background: rgba(243, 222, 214, 0.95);
+  border: 1px solid #c99b8b;
+  color: #6b2415;
+}
+
+.traza {
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.75;
+  border-top: 1px solid currentColor;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+
+.puntos::after { content: "."; animation: puntos 1.2s steps(4, end) infinite; }
+@keyframes puntos {
+  0% { content: "."; }
+  33% { content: ".."; }
+  66% { content: "..."; }
+}
+
+/* --- barra de entrada --- */
+.barra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px 6px 6px 20px;
+  background: rgba(28, 15, 8, 0.74);
+  border: 1px solid rgba(212, 175, 110, 0.32);
+  border-radius: 30px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 26px rgba(15, 8, 3, 0.45);
+}
+.barra:focus-within { border-color: rgba(212, 175, 110, 0.7); }
+
+.entrada {
+  flex: 1 1 auto;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--crema);
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 10px 0;
+}
+.entrada::placeholder { color: rgba(203, 176, 138, 0.7); }
+.entrada:disabled { opacity: 0.55; }
+
+.enviar {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--rivet);
+  color: #2a1206;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.enviar:hover:not(:disabled) { background: #e8853d; }
+.enviar:disabled { background: rgba(203, 176, 138, 0.25); color: rgba(245, 231, 204, 0.5); cursor: default; }
+
+/* --- sugerencias --- */
+.sugerencias { list-style: none; margin: 22px 0 0; padding: 0 12px; }
+.sugerencias button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 8px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--crema-apagada);
+  font-family: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+.sugerencias button:hover { color: var(--crema); background: rgba(245, 231, 204, 0.08); }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-left: 8px;
+  font-size: 0.82rem;
+  color: var(--crema-apagada);
+  cursor: pointer;
+}
+.toggle input { accent-color: var(--rivet); }
+
+@media (prefers-reduced-motion: reduce) {
+  .holo { background-image: url("/urza-holo-static.png"); }
+  .serpiente { display: none; }
+  .puntos::after { animation: none; content: "..."; }
+  .scroll { scroll-behavior: auto; }
+}
+
+@media (max-width: 1100px) {
+  .holo { display: none; }
+}
+
+@media (max-width: 640px) {
+  .centro { padding: 4vh 14px; }
+  .barra { padding-left: 16px; }
+}
