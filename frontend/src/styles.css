@@ -1,9 +1,35 @@
+/* Goudy Mediaeval, servida desde el proyecto. Es una tipografía de
+   titulación: se usa en el título y en los botones, nunca en los mensajes,
+   porque en cuerpo chico cuesta leerla. */
+@font-face {
+  font-family: "Goudy Mediaeval";
+  src: url("/fonts/goudy-mediaeval.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Goudy Mediaeval";
+  src: url("/fonts/goudy-mediaeval-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Goudy Medieval Alternate";
+  src: url("/fonts/goudy-alternate.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --crema: #f5e7cc;
   --crema-apagada: #cbb08a;
   --tinta: #241209;
   --oro: #d4af6e;
   --rivet: #d9722e;
+  --titulo: "Goudy Mediaeval", "Goudy Medieval Alternate", Georgia, serif;
 }
 
 * { box-sizing: border-box; }
@@ -50,22 +76,14 @@ body {
   pointer-events: none;
 }
 
-/* Aparición esporádica: entra, cruza y se va. Detrás de todo. */
-.serpiente {
-  position: absolute;
-  left: 0;
+/* Capa del cursor: cubre la ventana y no intercepta clics. */
+.bolitas {
+  position: fixed;
+  inset: 0;
   width: 100%;
-  height: auto;
-  opacity: 0;
+  height: 100%;
   pointer-events: none;
-  animation: cruzar 7s ease-out forwards;
-}
-/* Entra desde afuera del borde izquierdo y avanza hacia el centro. */
-@keyframes cruzar {
-  0%   { opacity: 0;    transform: translateX(-22%); }
-  15%  { opacity: 0.45; }
-  78%  { opacity: 0.45; }
-  100% { opacity: 0;    transform: translateX(6%); }
+  z-index: 2;
 }
 
 .centro {
@@ -81,8 +99,10 @@ body {
 .centro.vacio { justify-content: center; }
 
 .hero {
-  font-size: clamp(1.4rem, 3.4vw, 2.1rem);
+  font-family: var(--titulo);
+  font-size: clamp(1.7rem, 4.2vw, 2.6rem);
   font-weight: 400;
+  letter-spacing: 0.01em;
   text-align: center;
   margin: 0 0 26px;
   text-shadow: 0 2px 12px rgba(20, 10, 4, 0.75);
@@ -196,6 +216,8 @@ body {
 /* --- sugerencias --- */
 .sugerencias { list-style: none; margin: 22px 0 0; padding: 0 12px; }
 .sugerencias button {
+  font-family: var(--titulo);
+  font-size: 1.05rem;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -205,8 +227,6 @@ body {
   border: 0;
   border-radius: 8px;
   color: var(--crema-apagada);
-  font-family: inherit;
-  font-size: 0.95rem;
   text-align: left;
   cursor: pointer;
 }
@@ -226,7 +246,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .holo { background-image: url("/urza-holo-static.png"); }
-  .serpiente { display: none; }
+  .bolitas { display: none; }
   .puntos::after { animation: none; content: "..."; }
   .scroll { scroll-behavior: auto; }
 }

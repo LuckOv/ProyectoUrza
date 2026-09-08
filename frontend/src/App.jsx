@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import Bolitas from "./Bolitas.jsx";
+
 const API = "http://localhost:8000";
 
 const SUGERENCIAS = [
@@ -27,46 +29,6 @@ function Icono({ tipo }) {
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M3 10h18M9 4v16" />
     </svg>
-  );
-}
-
-/* La serpiente de cuentas cruza el fondo cada tanto y se va sola.
-   El key que cambia fuerza a recrear el <img>, y eso reinicia la animación
-   del webp desde el primer cuadro sin volver a descargarlo. */
-function Serpiente() {
-  const [visita, setVisita] = useState(null);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    let aparecer, esconder;
-    const programar = () => {
-      const espera = 10000 + Math.random() * 20000;   // entre 10 y 30 segundos
-      aparecer = setTimeout(() => {
-        // Cada pasada entra a una altura distinta, entre el 10% y el 80%.
-        setVisita({ id: Date.now(), alto: 10 + Math.random() * 70 });
-        esconder = setTimeout(() => setVisita(null), 7000);
-        programar();
-      }, espera);
-    };
-    programar();
-
-    return () => {
-      clearTimeout(aparecer);
-      clearTimeout(esconder);
-    };
-  }, []);
-
-  if (!visita) return null;
-  return (
-    <img
-      key={visita.id}
-      className="serpiente"
-      style={{ top: `${visita.alto}%` }}
-      src="/bolitas.webp"
-      alt=""
-      aria-hidden="true"
-    />
   );
 }
 
@@ -129,7 +91,7 @@ export default function App() {
   return (
     <div className="escena">
       <div className="holo" aria-hidden="true" />
-      <Serpiente />
+      {vacio && <Bolitas />}
 
       <main className={vacio ? "centro vacio" : "centro"}>
         {vacio && <h1 className="hero">¿Qué carta estás buscando?</h1>}
