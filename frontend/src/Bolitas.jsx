@@ -11,10 +11,15 @@ const SPRITES = [
   "/mana-verde.png",
 ];
 
-const SEPARACION = 26;     // distancia entre bolita y bolita cuando persigue
-const RADIO_ORBITA = 29;   // radio del pentágono cuando está quieto
+const SEPARACION = 34;     // distancia entre bolita y bolita cuando persigue
+const RADIO_ORBITA = 34;   // radio del pentágono cuando está quieto
 const QUIETO_MS = 300;     // cuánto espera antes de ponerse a girar
 const RADIO = 6;          // mitad del tamaño con que se dibuja cada bolita
+
+/* El puntero real es la punta de la flecha, pero el dibujo se extiende hacia
+   abajo y a la derecha desde ahí. Si centramos el anillo en la punta, la
+   flecha queda corrida adentro. Este corrimiento lo centra sobre el cuerpo. */
+const CENTRO_FLECHA = { x: 9, y: 11 };
 
 export default function Bolitas() {
   const canvasRef = useRef(null);
@@ -97,11 +102,13 @@ export default function Bolitas() {
         }
         angulo += dt * 1.1;
         const paso = (Math.PI * 2) / bolitas.length;
-        const acomodar = 1 - Math.pow(0.06, dt);
+        const acomodar = 1 - Math.pow(0.02, dt);
+        const cx = ancla.x + CENTRO_FLECHA.x;
+        const cy = ancla.y + CENTRO_FLECHA.y;
         bolitas.forEach((b, i) => {
           const a = angulo + i * paso;
-          b.x += (ancla.x + Math.cos(a) * RADIO_ORBITA - b.x) * acomodar;
-          b.y += (ancla.y + Math.sin(a) * RADIO_ORBITA - b.y) * acomodar;
+          b.x += (cx + Math.cos(a) * RADIO_ORBITA - b.x) * acomodar;
+          b.y += (cy + Math.sin(a) * RADIO_ORBITA - b.y) * acomodar;
         });
       } else {
         girando = false;

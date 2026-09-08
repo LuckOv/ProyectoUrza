@@ -30,6 +30,10 @@
   --oro: #d4af6e;
   --rivet: #d9722e;
   --titulo: "Goudy Mediaeval", "Goudy Medieval Alternate", Georgia, serif;
+  /* Flecha propia, con el azul del arco de la carta. El 2 2 es el hotspot:
+     el punto exacto que hace clic, que cae en la punta. */
+  --flecha: url("/cursor-urza.png") 2 2, auto;
+  --flecha-hd: image-set(url("/cursor-urza.png") 1x, url("/cursor-urza@2x.png") 2x) 2 2, auto;
 }
 
 * { box-sizing: border-box; }
@@ -41,6 +45,8 @@ html, body, #root {
 }
 
 body {
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
   font-family: "Spectral", Georgia, serif;
   color: var(--crema);
   background: #2a1a10;
@@ -195,6 +201,7 @@ body {
   font-size: 1rem;
   padding: 10px 0;
 }
+.entrada { cursor: text; }
 .entrada::placeholder { color: rgba(203, 176, 138, 0.7); }
 .entrada:disabled { opacity: 0.55; }
 
@@ -210,6 +217,7 @@ body {
   place-items: center;
   cursor: pointer;
 }
+.enviar { cursor: var(--flecha); cursor: var(--flecha-hd); }
 .enviar:hover:not(:disabled) { background: #e8853d; }
 .enviar:disabled { background: rgba(203, 176, 138, 0.25); color: rgba(245, 231, 204, 0.5); cursor: default; }
 
@@ -230,6 +238,7 @@ body {
   text-align: left;
   cursor: pointer;
 }
+.sugerencias button { cursor: var(--flecha); cursor: var(--flecha-hd); }
 .sugerencias button:hover { color: var(--crema); background: rgba(245, 231, 204, 0.08); }
 
 .toggle {
@@ -242,6 +251,7 @@ body {
   color: var(--crema-apagada);
   cursor: pointer;
 }
+.toggle { cursor: var(--flecha); cursor: var(--flecha-hd); }
 .toggle input { accent-color: var(--rivet); }
 
 @media (prefers-reduced-motion: reduce) {
