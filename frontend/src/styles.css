@@ -269,3 +269,335 @@ body {
   .centro { padding: 4vh 14px; }
   .barra { padding-left: 16px; }
 }
+
+
+/* ===========================================================
+   Sesión, carrito y carta en 3D
+   =========================================================== */
+
+.barra-superior {
+  position: absolute;
+  top: 18px;
+  right: 26px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.usuario {
+  font-family: var(--titulo);
+  font-size: 0.95rem;
+  color: var(--crema);
+  text-shadow: 0 1px 6px rgba(20, 10, 4, 0.8);
+}
+
+.enlace {
+  background: none;
+  border: 0;
+  color: var(--crema-apagada);
+  font-family: var(--titulo);
+  font-size: 0.95rem;
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
+  padding: 4px 6px;
+}
+.enlace:hover { color: var(--crema); }
+
+/* El botón del carrito aparece recién cuando hay algo adentro. */
+.carrito-boton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  background: rgba(28, 15, 8, 0.78);
+  color: var(--crema);
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
+  animation: aparecer-carrito 0.32s ease-out;
+}
+.carrito-boton:hover { border-color: rgba(212, 175, 110, 0.85); }
+
+.carrito-cuenta {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--rivet);
+  color: #2a1206;
+  font-family: var(--titulo);
+  font-size: 0.78rem;
+  display: grid;
+  place-items: center;
+}
+
+@keyframes aparecer-carrito {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.carrito-boton.latido { animation: latido 0.6s ease-out; }
+@keyframes latido {
+  0%, 100% { transform: scale(1); }
+  35%      { transform: scale(1.22); }
+  70%      { transform: scale(0.95); }
+}
+
+/* --- carta en 3D --- */
+
+.turno { display: flex; flex-direction: column; }
+
+.carta3d {
+  align-self: flex-start;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  margin: 10px 0 14px;
+}
+
+/* La perspectiva va en el contenedor y la rotación en el hijo: así el giro
+   se ve como profundidad y no como una deformación plana. */
+.carta3d-marco {
+  perspective: 900px;
+  flex: 0 0 auto;
+  width: 168px;
+}
+
+.carta3d-cuerpo {
+  position: relative;
+  border-radius: 9px;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  transition: transform 0.35s ease-out, box-shadow 0.35s ease-out;
+  box-shadow: 0 6px 16px rgba(15, 8, 3, 0.5);
+}
+.carta3d-marco.encima .carta3d-cuerpo {
+  /* El salto: se acerca y levanta más sombra. */
+  transition: transform 0.08s linear, box-shadow 0.25s ease-out;
+  box-shadow: 0 24px 44px rgba(12, 6, 2, 0.62);
+}
+.carta3d-marco.encima { transform: translateY(-10px) scale(1.04); transition: transform 0.25s ease-out; }
+.carta3d-marco { transition: transform 0.35s ease-out; }
+
+.carta3d-cuerpo img {
+  display: block;
+  width: 100%;
+  border-radius: 9px;
+}
+
+.carta3d-sinimagen {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 5 / 7;
+  padding: 12px;
+  text-align: center;
+  background: rgba(28, 15, 8, 0.8);
+  border: 1px solid rgba(212, 175, 110, 0.3);
+  border-radius: 9px;
+  font-family: var(--titulo);
+  color: var(--crema-apagada);
+}
+
+/* Reflejo tipo foil: sigue al puntero por encima de la imagen. */
+.carta3d-brillo {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  opacity: 0;
+  transition: opacity 0.25s ease-out;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+}
+.carta3d-marco.encima .carta3d-brillo { opacity: 1; }
+
+.carta3d-datos { padding-bottom: 6px; }
+.carta3d-nombre {
+  font-family: var(--titulo);
+  font-size: 1.1rem;
+  margin: 0 0 2px;
+  color: var(--crema);
+}
+.carta3d-edicion, .carta3d-stock {
+  margin: 0 0 4px;
+  font-size: 0.84rem;
+  color: var(--crema-apagada);
+}
+
+.carta3d-agregar {
+  margin-top: 6px;
+  padding: 9px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  background: rgba(28, 15, 8, 0.8);
+  color: var(--crema);
+  font-family: var(--titulo);
+  font-size: 0.92rem;
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
+}
+.carta3d-agregar:hover:not(:disabled) {
+  background: var(--rivet);
+  color: #2a1206;
+  border-color: var(--rivet);
+}
+.carta3d-agregar:disabled { opacity: 0.55; }
+
+/* --- paneles --- */
+
+.velo {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(16, 8, 3, 0.62);
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: flex-end;
+  animation: entrar-velo 0.2s ease-out;
+}
+@keyframes entrar-velo { from { opacity: 0; } to { opacity: 1; } }
+
+.panel {
+  margin: auto;
+  width: min(360px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 26px;
+  background: var(--pergamino, #e7d6b4);
+  border: 2px solid #4a3222;
+  border-radius: 8px;
+  color: #2e211a;
+  box-shadow: 0 20px 48px rgba(12, 6, 2, 0.55);
+}
+.panel h2 { font-family: var(--titulo); margin: 0 0 4px; font-weight: 400; }
+.panel label { display: flex; flex-direction: column; gap: 5px; font-size: 0.88rem; }
+.panel input {
+  padding: 10px 12px;
+  border: 1px solid #6b4a2e;
+  border-radius: 4px;
+  background: #f7eedc;
+  color: #2e211a;
+  font-family: inherit;
+  font-size: 1rem;
+}
+.panel input:focus { outline: none; box-shadow: 0 0 0 2px #8c6a3f; }
+.panel-error { margin: 0; color: #8c2216; font-size: 0.86rem; }
+.panel-enviar {
+  margin-top: 4px;
+  padding: 11px;
+  border: 0;
+  border-radius: 4px;
+  background: #4a3222;
+  color: #f1e4ca;
+  font-family: var(--titulo);
+  font-size: 1rem;
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
+}
+.panel-enviar:hover:not(:disabled) { background: #5e4029; }
+.panel-enviar:disabled { opacity: 0.6; }
+.panel-cambiar {
+  background: none;
+  border: 0;
+  color: #6b5335;
+  font-family: inherit;
+  font-size: 0.84rem;
+  text-decoration: underline;
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
+}
+
+/* --- cajón del carrito --- */
+
+.cajon {
+  width: min(380px, 94vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #e7d6b4;
+  border-left: 2px solid #4a3222;
+  color: #2e211a;
+  animation: entrar-cajon 0.26s ease-out;
+}
+@keyframes entrar-cajon { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+.cajon header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid #b79e77;
+}
+.cajon h2 { font-family: var(--titulo); font-weight: 400; margin: 0; font-size: 1.3rem; }
+.cajon-cerrar {
+  background: none; border: 0; font-size: 1.7rem; line-height: 1;
+  color: #6b5335; cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.cajon-vacio { padding: 28px 20px; font-style: italic; color: #6b5335; }
+
+.cajon-lista { flex: 1 1 auto; overflow-y: auto; list-style: none; margin: 0; padding: 12px 16px; }
+.cajon-lista li {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid #d3bf9a;
+}
+.cajon-lista img, .cajon-sinimagen {
+  width: 46px; aspect-ratio: 5 / 7; object-fit: cover;
+  border-radius: 4px; background: #c8b183; flex: 0 0 auto;
+}
+.cajon-datos { flex: 1 1 auto; min-width: 0; }
+.cajon-nombre { margin: 0; font-family: var(--titulo); font-size: 1rem; }
+.cajon-edicion, .cajon-precio { margin: 2px 0 0; font-size: 0.8rem; color: #6b5335; }
+.cajon-lista li > button {
+  background: none; border: 0; font-size: 1.4rem; color: #8c2216;
+  cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+
+.cajon footer { padding: 14px 20px 20px; border-top: 1px solid #b79e77; }
+.cajon-total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin: 0 0 12px; font-family: var(--titulo); font-size: 1.1rem;
+}
+.cajon-vaciar {
+  width: 100%; padding: 10px; border: 1px solid #6b4a2e; border-radius: 4px;
+  background: none; color: #6b2415; font-family: var(--titulo); font-size: 0.95rem;
+  cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.cajon-vaciar:hover { background: #d9c6a2; }
+
+/* --- aviso flotante --- */
+
+.aviso {
+  position: fixed;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  margin: 0;
+  padding: 11px 20px;
+  border-radius: 20px;
+  background: rgba(28, 15, 8, 0.92);
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  color: var(--crema);
+  font-size: 0.92rem;
+  animation: subir-aviso 0.25s ease-out;
+}
+@keyframes subir-aviso {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carta3d-cuerpo, .carta3d-marco { transition: none; }
+  .carrito-boton, .velo, .cajon, .aviso { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .carta3d { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .carta3d-marco { width: 140px; }
+  .barra-superior { top: 10px; right: 14px; }
+}

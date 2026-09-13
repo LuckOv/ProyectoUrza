@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import Bolitas from "./Bolitas.jsx";
-
-const API = "http://localhost:8000";
+import Carrito from "./Carrito.jsx";
+import Carta3D from "./Carta3D.jsx";
+import Sesion from "./Sesion.jsx";
+import * as api from "./api.js";
 
 const SUGERENCIAS = [
   { texto: "¿Tenés Cavern of Souls?", icono: "stock" },
@@ -32,6 +34,17 @@ function Icono({ tipo }) {
   );
 }
 
+function IconoCarrito() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="20" r="1.4" />
+      <circle cx="18" cy="20" r="1.4" />
+      <path d="M2 3h3l2.4 12.1a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.3L21 7H6" />
+    </svg>
+  );
+}
+
 function trazaDe(herramientas) {
   if (!herramientas || herramientas.length === 0) return "";
   return herramientas
@@ -46,11 +59,95 @@ export default function App() {
   const [entrada, setEntrada] = useState("");
   const [pensando, setPensando] = useState(false);
   const [verTrazas, setVerTrazas] = useState(false);
+
+  const [usuario, setUsuario] = useState(null);
+  const [items, setItems] = useState([]);
+  const [panel, setPanel] = useState(null);        // "sesion" | "carrito" | null
+  const [agregando, setAgregando] = useState(null);
+  const [aviso, setAviso] = useState("");
+  const [latido, setLatido] = useState(false);     // animación del ícono al sumar
+
   const finRef = useRef(null);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [mensajes, pensando]);
+
+  // Si quedó un token de una sesión anterior, lo revalidamos al abrir.
+  useEffect(() => {
+    if (!api.leerToken()) return;
+    api.quienSoy()
+      .then((r) => { setUsuario(r.usuario); return api.verCarrito(); })
+      .then((r) => setItems(r.items))
+      .catch(() => { api.borrarToken(); setUsuario(null); });
+  }, []);
+
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(""), 3500);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
+  async function entrar(u, c) {
+    const r = await api.ingresar(u, c);
+    api.guardarToken(r.token);
+    setUsuario(r.usuario);
+    setItems((await api.verCarrito()).items);
+    setPanel(null);
+  }
+
+  async function registrar(u, c) {
+    const r = await api.registrar(u, c);
+    api.guardarToken(r.token);
+    setUsuario(r.usuario);
+    setItems([]);
+    setPanel(null);
+  }
+
+  async function cerrarSesion() {
+    await api.salir().catch(() => {});
+    api.borrarToken();
+    setUsuario(null);
+    setItems([]);
+    setPanel(null);
+  }
+
+  async function agregarCarta(carta) {
+    // Ésta es la regla de negocio: sin cuenta no se compra.
+    if (!usuario) {
+      setPanel("sesion");
+      setAviso("Necesitás una cuenta para poder comprar.");
+      return;
+    }
+    setAgregando(carta.nombre);
+    try {
+      const r = await api.agregarAlCarrito({
+        nombre: carta.nombre,
+        edicion: carta.edicion,
+        precio: carta.precio_eur ? Number(carta.precio_eur) : null,
+        imagen: carta.imagen,
+        cantidad: 1,
+      });
+      setItems(r.items);
+      setLatido(true);
+      setTimeout(() => setLatido(false), 600);
+      setAviso(`${carta.nombre} va al carrito.`);
+    } catch (e) {
+      setAviso(e.message);
+    } finally {
+      setAgregando(null);
+    }
+  }
+
+  async function quitar(id) {
+    try { setItems((await api.quitarDelCarrito(id)).items); }
+    catch (e) { setAviso(e.message); }
+  }
+
+  async function vaciar() {
+    try { setItems((await api.vaciarCarrito()).items); }
+    catch (e) { setAviso(e.message); }
+  }
 
   async function enviar(texto) {
     const consulta = (texto ?? "").trim();
@@ -61,37 +158,50 @@ export default function App() {
     setPensando(true);
 
     try {
-      const respuesta = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ thread_id: threadId, texto: consulta }),
-      });
-      const data = await respuesta.json();
+      const data = await api.preguntar(threadId, consulta);
       setMensajes((m) => [
         ...m,
         data.error
           ? { rol: "falla", texto: data.error }
-          : { rol: "urza", texto: data.texto, herramientas: data.herramientas },
+          : { rol: "urza", texto: data.texto, herramientas: data.herramientas, carta: data.carta },
       ]);
-    } catch {
-      setMensajes((m) => [
-        ...m,
-        {
-          rol: "falla",
-          texto: `No pude contactar la API en ${API}. Fijate que uvicorn esté corriendo.`,
-        },
-      ]);
+    } catch (e) {
+      setMensajes((m) => [...m, { rol: "falla", texto: e.message }]);
     } finally {
       setPensando(false);
     }
   }
 
   const vacio = mensajes.length === 0 && !pensando;
+  const unidades = items.reduce((s, i) => s + i.cantidad, 0);
 
   return (
     <div className="escena">
       <div className="holo" aria-hidden="true" />
       {vacio && <Bolitas />}
+
+      <header className="barra-superior">
+        {usuario ? (
+          <>
+            <span className="usuario">{usuario}</span>
+            <button className="enlace" onClick={cerrarSesion}>Salir</button>
+          </>
+        ) : (
+          <button className="enlace" onClick={() => setPanel("sesion")}>Entrar</button>
+        )}
+
+        {/* El carrito sólo se muestra cuando hay algo adentro. */}
+        {unidades > 0 && (
+          <button
+            className={`carrito-boton${latido ? " latido" : ""}`}
+            onClick={() => setPanel("carrito")}
+            aria-label={`Carrito, ${unidades} cartas`}
+          >
+            <IconoCarrito />
+            <span className="carrito-cuenta">{unidades}</span>
+          </button>
+        )}
+      </header>
 
       <main className={vacio ? "centro vacio" : "centro"}>
         {vacio && <h1 className="hero">¿Qué carta estás buscando?</h1>}
@@ -100,9 +210,19 @@ export default function App() {
           {mensajes.map((m, i) => {
             const traza = verTrazas ? trazaDe(m.herramientas) : "";
             return (
-              <div key={i} className={`msg ${m.rol}`}>
-                {m.texto}
-                {traza && <div className="traza">{traza}</div>}
+              <div key={i} className="turno">
+                <div className={`msg ${m.rol}`}>
+                  {m.texto}
+                  {traza && <div className="traza">{traza}</div>}
+                </div>
+                {m.carta && (
+                  <Carta3D
+                    carta={m.carta}
+                    onAgregar={agregarCarta}
+                    sesionIniciada={Boolean(usuario)}
+                    agregando={agregando === m.carta.nombre}
+                  />
+                )}
               </div>
             );
           })}
@@ -161,6 +281,15 @@ export default function App() {
           </label>
         )}
       </main>
+
+      {aviso && <p className="aviso" role="status">{aviso}</p>}
+
+      {panel === "sesion" && (
+        <Sesion onEntrar={entrar} onRegistrar={registrar} onCerrar={() => setPanel(null)} />
+      )}
+      {panel === "carrito" && (
+        <Carrito items={items} onQuitar={quitar} onVaciar={vaciar} onCerrar={() => setPanel(null)} />
+      )}
     </div>
   );
 }
