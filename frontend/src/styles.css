@@ -64,24 +64,6 @@ body {
   justify-content: center;
 }
 
-/* La carta holográfica vive detrás de todo, corrida a la derecha para no
-   pelearse con el texto. Si la querés centrada, cambiá right por left: 50%
-   y sumá transform: translate(-50%, -50%). */
-.holo {
-  position: absolute;
-  top: 50%;
-  right: 6vw;
-  transform: translateY(-50%);
-  width: 30vh;
-  height: 92vh;
-  background-image: url("/urza-holo.webp");
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: 0.55;
-  pointer-events: none;
-}
-
 /* Capa del cursor: cubre la ventana y no intercepta clics. */
 .bolitas {
   position: fixed;
@@ -255,14 +237,9 @@ body {
 .toggle input { accent-color: var(--rivet); }
 
 @media (prefers-reduced-motion: reduce) {
-  .holo { background-image: url("/urza-holo-static.png"); }
   .bolitas { display: none; }
   .puntos::after { animation: none; content: "..."; }
   .scroll { scroll-behavior: auto; }
-}
-
-@media (max-width: 1100px) {
-  .holo { display: none; }
 }
 
 @media (max-width: 640px) {

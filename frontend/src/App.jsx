@@ -177,7 +177,6 @@ export default function App() {
 
   return (
     <div className="escena">
-      <div className="holo" aria-hidden="true" />
       {vacio && <Bolitas />}
 
       <header className="barra-superior">

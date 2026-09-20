@@ -6,6 +6,7 @@ import requests
 from langchain_core.tools import tool
 
 from cartas import ficha, resolver_nombre, _plano
+from reglas import consultar_reglas_mtg
 
 # Anclado a la carpeta de este archivo, no al directorio desde donde se lanza
 # el proceso: así funciona igual con uvicorn, con el test local o desde la raíz.
@@ -126,4 +127,9 @@ def consultar_datos_carta(nombre_carta: str) -> str:
     return "\n".join(partes)
 
 
-lista_tools = [consultar_precio_cardmarket, consultar_stock_local, consultar_datos_carta]
+lista_tools = [
+    consultar_precio_cardmarket,
+    consultar_stock_local,
+    consultar_datos_carta,
+    consultar_reglas_mtg,
+]
