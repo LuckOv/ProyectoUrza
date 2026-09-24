@@ -56,6 +56,12 @@ uv run python ingestar_lore.py                # ambas fases en corrida
 uv run python ingestar_lore.py --rebuild      # borra snapshot e índice y arranca de cero
 ```
 
+### Estado de datos hoy
+
+- RAG de reglas: `backend/reglas_db/` presente (no hace falta re-correr `ingestar_reglas.py`).
+- RAG de lore: `backend/lore_db/` presente — 5038 chunks en la colección `lore_mtg`; snapshot `backend/lore/` con 5122 páginas bajadas (rondas `2026-09-24_r1` y `2026-09-24_r2`). No re-correr la ingesta salvo que se borre.
+- Stock y cuentas: `backend/inventario.csv` y `backend/urza.db` (regenerables).
+
 ### Arquitectura (backend/)
 
 | Archivo | Rol |
@@ -87,7 +93,7 @@ uv run python ingestar_lore.py --rebuild      # borra snapshot e índice y arran
 
 ### Deuda técnica / pendientes operativos
 
-- `main` está 1 commit adelante de `origin/main` (falta `git push`).
+- `main` quedó 1 commit adelante de `origin/main` (`f2cc8aa`, FE-07). El avance de lore está pusheado a la branch remota `feat/fe-07-lore`; falta decidir merge/PR a main.
 - Los modelos de HuggingFace se descargan la primera vez (lento; sin `HF_TOKEN` aparece warning).
 - `frontend/node_modules` fue trackeado por error en commits viejos; se corrigió para dejar de seguirlo (historial queda pesado si se clona).
 
@@ -128,6 +134,7 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - *Como* jugador, *quiero* preguntar por la historia/narrativa de MTG (planos, personajes, trasfondo de cartas), *para* conocer el lore.
 - Comportamiento: el agente detecta consulta de lore → `consultar_lore_mtg` (subagente erudito en `lore.py`, espejo del juez FE-05: traduce ES→EN, `similarity_search` k=15, rerank k=6, ChatGroq) → responde citando los artículos de origen. Corpus = intros de la MTG Wiki (`ingestar_lore.py`, ETL resumible en `backend/lore/`).
 - Aceptación: "¿Quién fue Urza?" → respuesta con fuentes y `Fuentes consultadas: ...`; pregunta de reglas NO se desvía a lore (va a `consultar_reglas_mtg`); si no se ingirió `lore_db/`, avisa que corran `ingestar_lore.py` en vez de romper.
+- Siguiente paso natural: **FE-08** (alta de stock solo para vendedor); sus preguntas abiertas (identificación de rol y dónde persistir) ya están documentadas en Pendientes.
 
 ### Pendientes (por prioridad)
 
