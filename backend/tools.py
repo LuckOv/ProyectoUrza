@@ -6,6 +6,7 @@ import requests
 from langchain_core.tools import tool
 
 from cartas import ficha, resolver_nombre, _plano
+from lore import consultar_lore_mtg
 from reglas import consultar_reglas_mtg
 
 # Anclado a la carpeta de este archivo, no al directorio desde donde se lanza
@@ -132,4 +133,5 @@ lista_tools = [
     consultar_stock_local,
     consultar_datos_carta,
     consultar_reglas_mtg,
+    consultar_lore_mtg,
 ]

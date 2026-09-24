@@ -10,3 +10,7 @@ node_modules/
 # Datos del RAG de reglas: regenerables con ingestar_reglas.py
 backend/reglas/
 backend/reglas_db/
+
+# Datos del RAG de lore: regenerables con ingestar_lore.py
+backend/lore/
+backend/lore_db/

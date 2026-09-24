@@ -14,6 +14,7 @@ URZA es el asistente virtual de una tienda de cartas de **Magic: The Gathering**
 - **Precios** en euros (CardMarket, vía API de Scryfall).
 - **Ficha/datos de cartas** (tipo, colores, texto de reglas, legalidad — Scryfall).
 - **Reglas del juego** (RAG sobre las Comprehensive Rules oficiales → "subagente juez").
+- **Lore / historia** (RAG sobre la MTG Wiki → "subagente erudito").
 
 Tiene cuentas de usuario y carrito (SQLite). El front es una SPA de React/Vite. Todo se habla en **español rioplatense**.
 
@@ -23,6 +24,7 @@ Tiene cuentas de usuario y carrito (SQLite). El front es una SPA de React/Vite. 
 - Backend: **FastAPI** + **LangChain** + **LangGraph** (`StateGraph` + checkpointer `MemorySaver`).
 - LLM: **ChatGroq**, modelo `qwen/qwen3.8-27b`, `temperature=0`, `max_tokens=500` (tope del plan free de Groq; sin eso da 429).
 - RAG de reglas: **Chroma** (`backend/reglas_db/`), embeddings `paraphrase-multilingual-MiniLM-L12-v2`, rerank `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, juez = mismo ChatGroq.
+- RAG de lore: **Chroma** (`backend/lore_db/`, colección `lore_mtg`), mismos embeddings/rerank/ChatGroq reusados de `reglas.py`; corpus = intros de la **MTG Wiki** (`mtg.fandom.com`).
 - Frontend: **React 19 + Vite 8**.
 - Datos: `backend/inventario.csv` (stock/precio local), API de **Scryfall** (precios/fichas), SQLite `backend/urza.db` (usuarios/sesiones/carrito).
 
@@ -46,6 +48,14 @@ uv run python ingestar_reglas.py            # baja las Comprehensive Rules y las
 uv run python ingestar_reglas.py --rebuild  # re-indexa desde cero
 ```
 
+**RAG de lore**: si `backend/lore_db/` no existe, ingestar desde `backend/` (ETL en dos fases, **resumible** ante cortes de red):
+```powershell
+uv run python ingestar_lore.py --solo-bajar   # red → snapshot en backend/lore/ (retoma si se corta)
+uv run python ingestar_lore.py --index        # offline → backend/lore_db/
+uv run python ingestar_lore.py                # ambas fases en corrida
+uv run python ingestar_lore.py --rebuild      # borra snapshot e índice y arranca de cero
+```
+
 ### Arquitectura (backend/)
 
 | Archivo | Rol |
@@ -53,11 +63,13 @@ uv run python ingestar_reglas.py --rebuild  # re-indexa desde cero
 | `api.py` | API HTTP. Carga el grafo en forma lazy. `sesion_opcional`/`sesion_requerida` por header `Authorization: Bearer`. |
 | `graph.py` | Grafo: nodo `Ventas` (`agent_ventas`) → `tools` (ToolNode) → vuelve a `Ventas`; `MemorySaver` con `thread_id` por pestaña. |
 | `agent_sales.py` | Prompt del agente (reglas de herramientas + estilo) y wrapper `agente_ventas(messages)` que inyecta el SystemMessage. |
-| `tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg`. |
+| `tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg`, `consultar_lore_mtg`. |
 | `cartas.py` | Para el frontend: `ficha`, `resolver_nombre` (normaliza nombres ES/mal escritos vía Scryfall, con caché), `stock_de`. Datos ≠ `tools.py` (eso es para razonar). |
 | `tienda.py` | Usuarios, sesiones (token, 7 días) y carrito en SQLite (`urza.db`). Claves con PBKDF2 (200k iteraciones, sal por usuario). |
 | `reglas.py` | Subagente juez: traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
+| `lore.py` | Subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
 | `ingestar_reglas.py` | Descarga las Comprehensive Rules, las parte en chunks (1500 chars, overlap 200) con metadata `regla`/`titulo`/`seccion`, e indexa en Chroma. |
+| `ingestar_lore.py` | ETL del lore **resumible**: baja la MTG Wiki (Fandom) con checkpoint en `backend/lore/` (`paginas.jsonl` append-only + `estado.json` + `ronda.json` con manifiesto por ronda), escaneando categorías raíz (BFS) y una lista curada de títulos; `--index` reconstruye `lore_db/` offline. |
 | `test_local.py` | Chat por consola para probar al agente sin front: `..\.venv\Scripts\python test_local.py`. |
 
 ### Frontend (`frontend/src/`)
@@ -66,11 +78,12 @@ uv run python ingestar_reglas.py --rebuild  # re-indexa desde cero
 
 ### Reglas del repo
 
-- Gitignoreado: `credentials.json`, `.env`, `.venv/`, `__pycache__/`, `*.pyc`, `key.txt`, `urza.db`, `backend/reglas/`, `backend/reglas_db/` (regenerable), `node_modules/`.
+- Gitignoreado: `credentials.json`, `.env`, `.venv/`, `__pycache__/`, `*.pyc`, `key.txt`, `urza.db`, `backend/reglas/`, `backend/reglas_db/`, `backend/lore/`, `backend/lore_db/` (regenerables), `node_modules/`.
 - Nunca commitear claves. `backend/.env` es local.
-- El agente **nunca inventa** datos de cartas/reglas: solo de herramientas.
+- El agente **nunca inventa** datos de cartas/reglas/lore: solo de herramientas.
 - Respuestas cortas (2-3 oraciones), español rioplatense.
 - Los datos de reglas salen de `consultar_reglas_mtg` y se transmiten tal cual (la palabra del juez).
+- Los datos de lore salen de `consultar_lore_mtg` y se transmiten tal cual (la palabra del erudito).
 
 ### Deuda técnica / pendientes operativos
 
@@ -111,15 +124,16 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Comportamiento: el agente detecta consulta de reglas → `consultar_reglas_mtg` (Chroma + rerank + LLM juez) → responde citando números de regla. El juez solo usa el contexto provisto.
 - Aceptación: pregunta de timing (ej. "¿puedo responder con un instante antes de que la criatura muera?") → responde con base legal y `Bases consultadas: NNN, NNN`. Si no se ingirió el RAG, avisa que corran `ingestar_reglas.py` en vez de romper.
 
+**FE-07 · Agente de Lore** — **[Implementado]**
+- *Como* jugador, *quiero* preguntar por la historia/narrativa de MTG (planos, personajes, trasfondo de cartas), *para* conocer el lore.
+- Comportamiento: el agente detecta consulta de lore → `consultar_lore_mtg` (subagente erudito en `lore.py`, espejo del juez FE-05: traduce ES→EN, `similarity_search` k=15, rerank k=6, ChatGroq) → responde citando los artículos de origen. Corpus = intros de la MTG Wiki (`ingestar_lore.py`, ETL resumible en `backend/lore/`).
+- Aceptación: "¿Quién fue Urza?" → respuesta con fuentes y `Fuentes consultadas: ...`; pregunta de reglas NO se desvía a lore (va a `consultar_reglas_mtg`); si no se ingirió `lore_db/`, avisa que corran `ingestar_lore.py` en vez de romper.
+
 ### Pendientes (por prioridad)
 
 **FE-06 · Informar al vendedor** — **[Pendiente]**
 - *Como* vendedor, *quiero* que URZA me avise cuando un jugador deja una consulta o intención de compra, *para* estar al tanto sin mirar la base.
 - Estado de diseño: definición de "aviso" (email/panel/webhook) y qué dispara (compra concreta, consulta de carta fuera de stock...). Quedó sin implementar desde el MVP inicial.
-
-**FE-07 · Agente de Lore** — **[Pendiente]**
-- *Como* jugador, *quiero* preguntar por la historia/narrativa de MTG (planos, personajes, trasfondo de cartas), *para* conocer el lore.
-- Nota de diseño: replicar el patrón del juez (FE-05) con otra fuente de conocimiento (RAG sobre lore) en vez de reglas.
 
 **FE-08 · Alta de stock (solo vendedor)** — **[Pendiente]**
 - *Como* vendedor, *quiero* agregar cartas al inventario desde el chat, *para* mantener el stock al día.
