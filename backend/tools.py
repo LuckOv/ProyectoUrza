@@ -9,6 +9,7 @@ import base
 import inventario
 import tienda
 from cartas import ficha, resolver_nombre
+from lore import consultar_lore_mtg
 from reglas import consultar_reglas_mtg
 
 # Cabecera obligatoria que exige la API de Scryfall para no bloquear la petición
@@ -258,6 +259,7 @@ lista_tools = [
     consultar_stock_local,
     consultar_datos_carta,
     consultar_reglas_mtg,
+    consultar_lore_mtg,
     agregar_al_carrito,
     ver_carrito,
     quitar_del_carrito,

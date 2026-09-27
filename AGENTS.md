@@ -14,6 +14,7 @@ URZA es el asistente virtual de una tienda de cartas de **Magic: The Gathering**
 - **Precio de referencia del mercado** en euros (CardMarket, vía API de Scryfall).
 - **Ficha/datos de cartas** (tipo, colores, texto de reglas, legalidad — Scryfall).
 - **Reglas del juego** (RAG sobre las Comprehensive Rules oficiales → "subagente juez").
+- **Lore / historia** (RAG sobre la MTG Wiki → "subagente erudito").
 
 No hay cuentas de jugador: el carrito se ata a la conversación (`thread_id`) y la compra se cierra desde el propio chat, que pide nombre, apellido y día y hora de retiro. El vendedor administra todo desde **Mesa Central** (`frontend/vendedor.html`), protegido con una clave. El front son dos páginas React/Vite (tienda + panel). Todo se habla en **español rioplatense**.
 
@@ -23,6 +24,7 @@ No hay cuentas de jugador: el carrito se ata a la conversación (`thread_id`) y 
 - Backend: **FastAPI** + **LangChain** + **LangGraph** (`StateGraph` + checkpointer `MemorySaver`).
 - LLM: **ChatGroq**, modelo `qwen/qwen3.8-27b`, `temperature=0`, `max_tokens=500` (tope del plan free de Groq; sin eso da 429).
 - RAG de reglas: **Chroma** (`backend/reglas_db/`), embeddings `paraphrase-multilingual-MiniLM-L12-v2`, rerank `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, juez = mismo ChatGroq.
+- RAG de lore: **Chroma** (`backend/lore_db/`, colección `lore_mtg`), mismos embeddings/rerank/ChatGroq reusados de `reglas.py`; corpus = intros de la **MTG Wiki** (`mtg.fandom.com`).
 - Frontend: **React 19 + Vite 8**.
 - Datos: SQLite `backend/urza.db` (inventario, carrito por charla, pedidos, movimientos, config, descuentos), API de **Scryfall** (fichas, imágenes, impresiones), **dolarapi.com** (cotización). `backend/inventario.csv` sólo se usa para la importación inicial.
 
@@ -48,6 +50,20 @@ uv run python ingestar_reglas.py            # baja las Comprehensive Rules y las
 uv run python ingestar_reglas.py --rebuild  # re-indexa desde cero
 ```
 
+**RAG de lore**: si `backend/lore_db/` no existe, ingestar desde `backend/` (ETL en dos fases, **resumible** ante cortes de red):
+```powershell
+uv run python ingestar_lore.py --solo-bajar   # red → snapshot en backend/lore/ (retoma si se corta)
+uv run python ingestar_lore.py --index        # offline → backend/lore_db/
+uv run python ingestar_lore.py                # ambas fases en corrida
+uv run python ingestar_lore.py --rebuild      # borra snapshot e índice y arranca de cero
+```
+
+### Estado de datos hoy
+
+- RAG de reglas: `backend/reglas_db/` presente (no hace falta re-correr `ingestar_reglas.py`).
+- RAG de lore: `backend/lore_db/` presente — 5038 chunks en la colección `lore_mtg`; snapshot `backend/lore/` con 5122 páginas bajadas (rondas `2026-09-24_r1` y `2026-09-24_r2`). No re-correr la ingesta salvo que se borre.
+- Stock y cuentas: `backend/inventario.csv` y `backend/urza.db` (regenerables).
+
 ### Arquitectura (backend/)
 
 | Archivo | Rol |
@@ -57,12 +73,21 @@ uv run python ingestar_reglas.py --rebuild  # re-indexa desde cero
 | `inventario.py` | Inventario por variante (impresión + grado), SKU `URZ-0001`, precio en pesos = `precio_usd × dólar × (1 − descuento)`, dólar automático (dolarapi, refresco cada hora) o manual, descuentos general y por carta, alta desde Scryfall, importación del CSV viejo. |
 | `vendedor.py` | Endpoints `/vendedor/*` del panel, protegidos por `VENDEDOR_CLAVE`. Dashboard, export CSV del historial, config. |
 | `graph.py` | Grafo: nodo `Ventas` (`agent_ventas`) → `tools` (ToolNode) → vuelve a `Ventas`; `MemorySaver` con `thread_id` por pestaña. |
+<<<<<<< HEAD
 | `agent_sales.py` | Prompt del agente (reglas de herramientas + flujo de compra + estilo). Se arma en cada turno con la fecha de hoy y los horarios de la tienda (`system_prompt()`), así el agente convierte "el sábado a las 5" en fecha y hora concretas. |
 | `tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg` y las de compra `agregar_al_carrito` (con `variante_id` opcional si hay varias), `ver_carrito`, `quitar_del_carrito`, `confirmar_compra(nombre, apellido, fecha_retiro, hora_retiro)` (reciben el `thread_id` por `RunnableConfig`, invisible para el modelo). |
 | `cartas.py` | Todo lo de Scryfall: `ficha`, `buscar` (carta 3D + variantes de la tienda), `resolver_nombre` (normaliza nombres ES/mal escritos, con caché), `autocompletar`, `impresiones`, `impresion_por_id`, `total_pool_standard`. |
 | `tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
+=======
+| `agent_sales.py` | Prompt del agente (reglas de herramientas + estilo) y wrapper `agente_ventas(messages)` que inyecta el SystemMessage. |
+| `tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg`, `consultar_lore_mtg`. |
+| `cartas.py` | Para el frontend: `ficha`, `resolver_nombre` (normaliza nombres ES/mal escritos vía Scryfall, con caché), `stock_de`. Datos ≠ `tools.py` (eso es para razonar). |
+| `tienda.py` | Usuarios, sesiones (token, 7 días) y carrito en SQLite (`urza.db`). Claves con PBKDF2 (200k iteraciones, sal por usuario). |
+>>>>>>> 1328be48ada55af472bb36dc2c7e253b7802d1d9
 | `reglas.py` | Subagente juez: traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
+| `lore.py` | Subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
 | `ingestar_reglas.py` | Descarga las Comprehensive Rules, las parte en chunks (1500 chars, overlap 200) con metadata `regla`/`titulo`/`seccion`, e indexa en Chroma. |
+| `ingestar_lore.py` | ETL del lore **resumible**: baja la MTG Wiki (Fandom) con checkpoint en `backend/lore/` (`paginas.jsonl` append-only + `estado.json` + `ronda.json` con manifiesto por ronda), escaneando categorías raíz (BFS) y una lista curada de títulos; `--index` reconstruye `lore_db/` offline. |
 | `test_local.py` | Chat por consola para probar al agente sin front: `..\.venv\Scripts\python test_local.py`. |
 
 ### Frontend (`frontend/src/`)
@@ -73,15 +98,16 @@ Panel del vendedor (`vendedor.html` → `src/vendedor/`): `Panel.jsx` (entrada c
 
 ### Reglas del repo
 
-- Gitignoreado: `credentials.json`, `.env`, `.venv/`, `__pycache__/`, `*.pyc`, `key.txt`, `urza.db`, `backend/reglas/`, `backend/reglas_db/` (regenerable), `node_modules/`.
+- Gitignoreado: `credentials.json`, `.env`, `.venv/`, `__pycache__/`, `*.pyc`, `key.txt`, `urza.db`, `backend/reglas/`, `backend/reglas_db/`, `backend/lore/`, `backend/lore_db/` (regenerables), `node_modules/`.
 - Nunca commitear claves. `backend/.env` es local.
-- El agente **nunca inventa** datos de cartas/reglas: solo de herramientas.
+- El agente **nunca inventa** datos de cartas/reglas/lore: solo de herramientas.
 - Respuestas cortas (2-3 oraciones), español rioplatense.
 - Los datos de reglas salen de `consultar_reglas_mtg` y se transmiten tal cual (la palabra del juez).
+- Los datos de lore salen de `consultar_lore_mtg` y se transmiten tal cual (la palabra del erudito).
 
 ### Deuda técnica / pendientes operativos
 
-- `main` está 1 commit adelante de `origin/main` (falta `git push`).
+- `main` quedó 1 commit adelante de `origin/main` (`f2cc8aa`, FE-07). El avance de lore está pusheado a la branch remota `feat/fe-07-lore`; falta decidir merge/PR a main.
 - Los modelos de HuggingFace se descargan la primera vez (lento; sin `HF_TOKEN` aparece warning).
 - `frontend/node_modules` fue trackeado por error en commits viejos; se corrigió para dejar de seguirlo (historial queda pesado si se clona).
 
@@ -118,6 +144,12 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Comportamiento: el agente detecta consulta de reglas → `consultar_reglas_mtg` (Chroma + rerank + LLM juez) → responde citando números de regla. El juez solo usa el contexto provisto.
 - Aceptación: pregunta de timing (ej. "¿puedo responder con un instante antes de que la criatura muera?") → responde con base legal y `Bases consultadas: NNN, NNN`. Si no se ingirió el RAG, avisa que corran `ingestar_reglas.py` en vez de romper.
 
+**FE-07 · Agente de Lore** — **[Implementado]**
+- *Como* jugador, *quiero* preguntar por la historia/narrativa de MTG (planos, personajes, trasfondo de cartas), *para* conocer el lore.
+- Comportamiento: el agente detecta consulta de lore → `consultar_lore_mtg` (subagente erudito en `lore.py`, espejo del juez FE-05: traduce ES→EN, `similarity_search` k=15, rerank k=6, ChatGroq) → responde citando los artículos de origen. Corpus = intros de la MTG Wiki (`ingestar_lore.py`, ETL resumible en `backend/lore/`).
+- Aceptación: "¿Quién fue Urza?" → respuesta con fuentes y `Fuentes consultadas: ...`; pregunta de reglas NO se desvía a lore (va a `consultar_reglas_mtg`); si no se ingirió `lore_db/`, avisa que corran `ingestar_lore.py` en vez de romper.
+- Siguiente paso natural: **FE-08** (alta de stock solo para vendedor); sus preguntas abiertas (identificación de rol y dónde persistir) ya están documentadas en Pendientes.
+
 ### Pendientes (por prioridad)
 
 **FE-06 · Informar al vendedor** — **[Pendiente]**
@@ -125,6 +157,7 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Base disponible: los pedidos confirmados ya aparecen en el panel (calendario, dashboard e historial). Falta el aviso activo (email/notificación).
 - Estado de diseño: definición de "aviso" (email/panel/webhook) y qué dispara (compra concreta, consulta de carta fuera de stock...). Quedó sin implementar desde el MVP inicial.
 
+<<<<<<< HEAD
 **FE-07 · Agente de Lore** — **[Pendiente]**
 - *Como* jugador, *quiero* preguntar por la historia/narrativa de MTG (planos, personajes, trasfondo de cartas), *para* conocer el lore.
 - Nota de diseño: replicar el patrón del juez (FE-05) con otra fuente de conocimiento (RAG sobre lore) en vez de reglas.
@@ -142,6 +175,13 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Dashboard: unidades, valor del inventario, pedidos abiertos, cartas sin stock, actividad reciente, resumen del stock (disponible / reservado / vendido 30 días), próximos retiros y cobertura del pool de Standard (cartas legales con stock / total de Scryfall).
 - Historial ("Protocolo"): fecha y hora de retiro, fecha y hora de pedido, nombre, unidades, detalle, comentario del vendedor (editable en la fila); filtros por texto, estado y rango de fechas; export CSV (`;`, UTF-8 con BOM para Excel).
 - Configuración: horarios por día (los usa el chat para validar retiros), dólar automático (dolarapi: blue/oficial/tarjeta/MEP/…) o manual, umbral de stock bajo y panel de descuentos (general + por carta; se aplica el mayor).
+=======
+**FE-08 · Alta de stock (solo vendedor)** — **[Pendiente]**
+- *Como* vendedor, *quiero* agregar cartas al inventario desde el chat, *para* mantener el stock al día.
+- Restricción de rol: **únicamente el vendedor**; el jugador **nunca** puede escribir stock.
+- Preguntas abiertas a resolver al implementar: cómo se identifica al vendedor (rol/flag en `usuarios` de `urza.db`, o credencial dedicada) y dónde persistir (hoy es `inventario.csv`; opción: migrar a tabla SQLite).
+- Aceptación: una sesión de vendedor agrega una carta y `consultar_stock_local` la refleja de inmediato; una sesión de jugador recibe rechazo/degradación a consulta.
+>>>>>>> 1328be48ada55af472bb36dc2c7e253b7802d1d9
 
 **FE-09 · Armador de mazos** — **[Pendiente]**
 - *Como* jugador, *quiero* recomendaciones para construir un mazo, *para* armar mi lista.
