@@ -1,6 +1,9 @@
+import { pesos } from "./formato.js";
+
 /* Cajón del carrito. Se despliega desde la derecha y lista lo que hay
-   adentro, con el total abajo. */
-export default function Carrito({ items, onQuitar, onVaciar, onCerrar }) {
+   adentro, con el total abajo. "Finalizar compra" no abre un formulario:
+   le avisa al chat, y es Urza quien pide nombre, apellido y horario. */
+export default function Carrito({ items, onQuitar, onVaciar, onFinalizar, onCerrar, ocupado }) {
   const total = items.reduce((suma, i) => suma + (i.precio || 0) * i.cantidad, 0);
   const unidades = items.reduce((suma, i) => suma + i.cantidad, 0);
 
@@ -24,10 +27,10 @@ export default function Carrito({ items, onQuitar, onVaciar, onCerrar }) {
                     : <div className="cajon-sinimagen" />}
                   <div className="cajon-datos">
                     <p className="cajon-nombre">{i.nombre}</p>
-                    {i.edicion && <p className="cajon-edicion">{i.edicion}</p>}
-                    <p className="cajon-precio">
-                      {i.cantidad} × {i.precio ? `€${i.precio.toFixed(2)}` : "sin precio"}
+                    <p className="cajon-edicion">
+                      {[i.edicion, i.grado].filter(Boolean).join(" · ")}
                     </p>
+                    <p className="cajon-precio">{i.cantidad} × {pesos(i.precio)}</p>
                   </div>
                   <button onClick={() => onQuitar(i.id)} aria-label={`Quitar ${i.nombre}`}>×</button>
                 </li>
@@ -37,8 +40,11 @@ export default function Carrito({ items, onQuitar, onVaciar, onCerrar }) {
             <footer>
               <p className="cajon-total">
                 <span>{unidades} {unidades === 1 ? "carta" : "cartas"}</span>
-                <strong>€{total.toFixed(2)}</strong>
+                <strong>{pesos(total)}</strong>
               </p>
+              <button className="cajon-finalizar" onClick={onFinalizar} disabled={ocupado}>
+                Finalizar compra
+              </button>
               <button className="cajon-vaciar" onClick={onVaciar}>Vaciar carrito</button>
             </footer>
           </>

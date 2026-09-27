@@ -249,7 +249,7 @@ body {
 
 
 /* ===========================================================
-   Sesión, carrito y carta en 3D
+   Carrito, pedido y carta en 3D
    =========================================================== */
 
 .barra-superior {
@@ -261,25 +261,6 @@ body {
   align-items: center;
   gap: 14px;
 }
-
-.usuario {
-  font-family: var(--titulo);
-  font-size: 0.95rem;
-  color: var(--crema);
-  text-shadow: 0 1px 6px rgba(20, 10, 4, 0.8);
-}
-
-.enlace {
-  background: none;
-  border: 0;
-  color: var(--crema-apagada);
-  font-family: var(--titulo);
-  font-size: 0.95rem;
-  cursor: var(--flecha);
-  cursor: var(--flecha-hd);
-  padding: 4px 6px;
-}
-.enlace:hover { color: var(--crema); }
 
 /* El botón del carrito aparece recién cuando hay algo adentro. */
 .carrito-boton {
@@ -424,6 +405,19 @@ body {
 }
 .carta3d-agregar:disabled { opacity: 0.55; }
 
+.carta3d-variante {
+  display: block;
+  max-width: 100%;
+  margin: 4px 0 2px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  background: rgba(28, 15, 8, 0.8);
+  color: var(--crema);
+  font-family: inherit;
+  font-size: 0.84rem;
+}
+
 /* --- paneles --- */
 
 .velo {
@@ -437,57 +431,6 @@ body {
   animation: entrar-velo 0.2s ease-out;
 }
 @keyframes entrar-velo { from { opacity: 0; } to { opacity: 1; } }
-
-.panel {
-  margin: auto;
-  width: min(360px, 92vw);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 26px;
-  background: var(--pergamino, #e7d6b4);
-  border: 2px solid #4a3222;
-  border-radius: 8px;
-  color: #2e211a;
-  box-shadow: 0 20px 48px rgba(12, 6, 2, 0.55);
-}
-.panel h2 { font-family: var(--titulo); margin: 0 0 4px; font-weight: 400; }
-.panel label { display: flex; flex-direction: column; gap: 5px; font-size: 0.88rem; }
-.panel input {
-  padding: 10px 12px;
-  border: 1px solid #6b4a2e;
-  border-radius: 4px;
-  background: #f7eedc;
-  color: #2e211a;
-  font-family: inherit;
-  font-size: 1rem;
-}
-.panel input:focus { outline: none; box-shadow: 0 0 0 2px #8c6a3f; }
-.panel-error { margin: 0; color: #8c2216; font-size: 0.86rem; }
-.panel-enviar {
-  margin-top: 4px;
-  padding: 11px;
-  border: 0;
-  border-radius: 4px;
-  background: #4a3222;
-  color: #f1e4ca;
-  font-family: var(--titulo);
-  font-size: 1rem;
-  cursor: var(--flecha);
-  cursor: var(--flecha-hd);
-}
-.panel-enviar:hover:not(:disabled) { background: #5e4029; }
-.panel-enviar:disabled { opacity: 0.6; }
-.panel-cambiar {
-  background: none;
-  border: 0;
-  color: #6b5335;
-  font-family: inherit;
-  font-size: 0.84rem;
-  text-decoration: underline;
-  cursor: var(--flecha);
-  cursor: var(--flecha-hd);
-}
 
 /* --- cajón del carrito --- */
 
@@ -545,6 +488,35 @@ body {
   cursor: var(--flecha); cursor: var(--flecha-hd);
 }
 .cajon-vaciar:hover { background: #d9c6a2; }
+.cajon-finalizar {
+  width: 100%; margin-bottom: 8px; padding: 11px; border: 0; border-radius: 4px;
+  background: #4a3222; color: #f1e4ca; font-family: var(--titulo); font-size: 1rem;
+  cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.cajon-finalizar:hover:not(:disabled) { background: #5e4029; }
+.cajon-finalizar:disabled { opacity: 0.6; }
+
+/* --- comprobante del pedido confirmado --- */
+
+.comprobante {
+  align-self: flex-start;
+  max-width: 82%;
+  margin: 2px 0 8px;
+  padding: 12px 16px;
+  border: 1px dashed rgba(120, 88, 46, 0.7);
+  border-radius: 8px;
+  background: rgba(231, 214, 180, 0.95);
+  color: var(--tinta);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.comprobante h3 {
+  margin: 0 0 4px;
+  font-family: var(--titulo);
+  font-weight: 400;
+  font-size: 1.05rem;
+}
 
 /* --- aviso flotante --- */
 

@@ -8,18 +8,34 @@ Levantar con:
 
 Probar que anda:          http://localhost:8000/salud
 Ver todos los endpoints:  http://localhost:8000/docs
+
+No hay cuentas de usuario. El carrito se identifica con el thread_id de la
+charla (uno por pestaña), el mismo que usa el grafo para su memoria. La
+compra se cierra desde el chat: el agente pide nombre, apellido y día y hora
+de retiro, y registra el pedido.
+
+El panel del vendedor (Mesa Central) usa los endpoints de vendedor.py, todos
+bajo /vendedor y protegidos con la clave VENDEDOR_CLAVE del .env.
 """
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
+import base
 import cartas
+import inventario
 import tienda
+import vendedor
 
 app = FastAPI(title="URZA API")
-tienda.preparar()
+
+# Crea o migra las tablas; la primera vez importa el inventario.csv viejo y
+# completa imágenes y precios desde Scryfall sin frenar el arranque.
+base.preparar()
+inventario.importar_csv_viejo()
+inventario.completar_en_segundo_plano()
 
 # Cualquier puerto de localhost: Vite salta del 5173 al 5174 si el primero
 # está ocupado, y con una lista fija el navegador bloquearía el pedido por
@@ -31,13 +47,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(vendedor.router)
+app.include_router(vendedor.protegido)
+
 
 # --- modelos de entrada ------------------------------------------------------
-
-class Credenciales(BaseModel):
-    usuario: str
-    clave: str
-
 
 class Consulta(BaseModel):
     thread_id: str
@@ -45,104 +59,36 @@ class Consulta(BaseModel):
 
 
 class ItemCarrito(BaseModel):
-    nombre: str
-    edicion: str | None = None
-    precio: float | None = None
-    imagen: str | None = None
+    inventario_id: int      # la variante exacta (set + grado) que se agrega
     cantidad: int = 1
 
 
-# --- autenticación -----------------------------------------------------------
-
-def _token(authorization):
-    if not authorization or not authorization.lower().startswith("bearer "):
-        return ""
-    return authorization[7:].strip()
-
-
-def sesion_opcional(authorization: str | None = Header(default=None)):
-    """Para endpoints que funcionan con o sin usuario, como el chat."""
-    return tienda.quien_es(_token(authorization))
-
-
-def sesion_requerida(authorization: str | None = Header(default=None)):
-    """Para todo lo que toca el carrito: sin usuario no se pasa."""
-    usuario = tienda.quien_es(_token(authorization))
-    if not usuario:
-        raise HTTPException(status_code=401, detail="Necesitás iniciar sesión para esto.")
-    return usuario
-
-
-@app.post("/registro")
-def registro(datos: Credenciales):
-    try:
-        usuario = tienda.registrar(datos.usuario, datos.clave)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"token": tienda.abrir_sesion(usuario["id"]), "usuario": usuario["usuario"]}
-
-
-@app.post("/login")
-def login(datos: Credenciales):
-    try:
-        usuario = tienda.verificar(datos.usuario, datos.clave)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-    return {"token": tienda.abrir_sesion(usuario["id"]), "usuario": usuario["usuario"]}
-
-
-@app.post("/logout")
-def logout(authorization: str | None = Header(default=None)):
-    tienda.cerrar_sesion(_token(authorization))
-    return {"ok": True}
-
-
-@app.get("/yo")
-def yo(usuario=Depends(sesion_requerida)):
-    return {"usuario": usuario["usuario"]}
-
-
 # --- carrito -----------------------------------------------------------------
+# El frontend usa estos endpoints para el botón "Agregar al carrito" de la
+# carta y para el cajón. El agente toca el mismo carrito con sus herramientas.
 
-@app.get("/carrito")
-def ver_carrito(usuario=Depends(sesion_requerida)):
-    return {"items": tienda.ver_carrito(usuario["id"])}
+@app.get("/carrito/{thread_id}")
+def ver_carrito(thread_id: str):
+    return {"items": tienda.ver_carrito(thread_id)}
 
 
-@app.post("/carrito")
-def agregar_al_carrito(item: ItemCarrito, usuario=Depends(sesion_requerida)):
-    # El tope lo pone el inventario, no el botón: alguien podría pegarle al
-    # endpoint directo y pedir cien copias de algo que tenemos dos veces.
-    disponibles, _ = cartas.stock_de(item.nombre)
-    if disponibles is None:
-        raise HTTPException(status_code=404, detail=f"'{item.nombre}' no figura en el inventario.")
-    if disponibles == 0:
-        raise HTTPException(status_code=409, detail=f"No queda stock de '{item.nombre}'.")
-
-    ya_lleva = sum(
-        i["cantidad"] for i in tienda.ver_carrito(usuario["id"])
-        if i["nombre"].lower() == item.nombre.lower()
-    )
-    if ya_lleva + item.cantidad > disponibles:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Sólo quedan {disponibles} de '{item.nombre}' y ya tenés {ya_lleva} en el carrito.",
-        )
-
-    items = tienda.agregar(
-        usuario["id"], item.nombre, item.edicion, item.precio, item.imagen, item.cantidad
-    )
+@app.post("/carrito/{thread_id}")
+def agregar_al_carrito(thread_id: str, item: ItemCarrito):
+    try:
+        items = tienda.agregar(thread_id, item.inventario_id, item.cantidad)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return {"items": items}
 
 
-@app.delete("/carrito/{item_id}")
-def quitar_del_carrito(item_id: int, usuario=Depends(sesion_requerida)):
-    return {"items": tienda.quitar(usuario["id"], item_id)}
+@app.delete("/carrito/{thread_id}/{item_id}")
+def quitar_del_carrito(thread_id: str, item_id: int):
+    return {"items": tienda.quitar(thread_id, item_id)}
 
 
-@app.delete("/carrito")
-def vaciar_carrito(usuario=Depends(sesion_requerida)):
-    return {"items": tienda.vaciar(usuario["id"])}
+@app.delete("/carrito/{thread_id}")
+def vaciar_carrito(thread_id: str):
+    return {"items": tienda.vaciar(thread_id)}
 
 
 # --- cartas ------------------------------------------------------------------
@@ -158,6 +104,10 @@ def carta(nombre: str):
 # --- chat --------------------------------------------------------------------
 
 _grafo = None
+
+# Herramientas cuyo argumento nombre_carta NO debe disparar la carta 3D:
+# si el jugador saca una carta del carrito, no tiene sentido volver a mostrarla.
+_SIN_CARTA = {"quitar_del_carrito"}
 
 
 def _obtener_grafo():
@@ -179,8 +129,11 @@ def salud():
 
 
 @app.post("/chat")
-def chat(consulta: Consulta, usuario=Depends(sesion_opcional)):
-    vacia = {"texto": "", "herramientas": [], "carta": None, "usuario": None}
+def chat(consulta: Consulta):
+    vacia = {
+        "texto": "", "herramientas": [], "carta": None,
+        "carrito": tienda.ver_carrito(consulta.thread_id), "pedido": None,
+    }
 
     try:
         grafo = _obtener_grafo()
@@ -210,6 +163,7 @@ def chat(consulta: Consulta, usuario=Depends(sesion_opcional)):
     herramientas = []
     args_por_id = {}
     ultimo_nombre = None
+    pedido = None
 
     for m in tramo:
         for llamada in getattr(m, "tool_calls", None) or []:
@@ -219,11 +173,15 @@ def chat(consulta: Consulta, usuario=Depends(sesion_opcional)):
                 getattr(m, "tool_call_id", None),
                 (getattr(m, "name", "herramienta"), {}),
             )
-            herramientas.append({"nombre": nombre, "argumentos": args, "resultado": str(m.content)})
+            resultado = str(m.content)
+            herramientas.append({"nombre": nombre, "argumentos": args, "resultado": resultado})
             # De qué carta habló el agente. Sale de los argumentos con que
             # llamó a la herramienta, así no hay que adivinarlo del texto.
-            if isinstance(args, dict) and args.get("nombre_carta"):
+            if nombre not in _SIN_CARTA and isinstance(args, dict) and args.get("nombre_carta"):
                 ultimo_nombre = args["nombre_carta"]
+            # Si en este turno se cerró la compra, el front muestra el comprobante.
+            if nombre == "confirmar_compra" and resultado.startswith("Pedido #"):
+                pedido = resultado
 
     texto = str(tramo[-1].content).strip() if tramo else ""
     if not texto:
@@ -233,6 +191,9 @@ def chat(consulta: Consulta, usuario=Depends(sesion_opcional)):
         "texto": texto,
         "herramientas": herramientas,
         "carta": cartas.buscar(ultimo_nombre) if ultimo_nombre else None,
-        "usuario": usuario["usuario"] if usuario else None,
+        # El agente pudo haber tocado el carrito: se devuelve cómo quedó
+        # para que el front actualice el ícono sin otro pedido.
+        "carrito": tienda.ver_carrito(consulta.thread_id),
+        "pedido": pedido,
         "error": "",
     }

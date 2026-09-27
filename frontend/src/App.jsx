@@ -3,13 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import Bolitas from "./Bolitas.jsx";
 import Carrito from "./Carrito.jsx";
 import Carta3D from "./Carta3D.jsx";
-import Sesion from "./Sesion.jsx";
 import * as api from "./api.js";
 
 const SUGERENCIAS = [
   { texto: "¿Tenés Cavern of Souls?", icono: "stock" },
   { texto: "Precio de Llanowar Elves", icono: "precio" },
-  { texto: "¿Queda Twinflame Tyrant?", icono: "stock" },
+  { texto: "Quiero comprar Heartfire Hero", icono: "compra" },
 ];
 
 function Icono({ tipo }) {
@@ -18,6 +17,15 @@ function Icono({ tipo }) {
     stroke: "currentColor", strokeWidth: 1.6,
     strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true,
   };
+  if (tipo === "compra") {
+    return (
+      <svg {...comun}>
+        <circle cx="9" cy="20" r="1.2" />
+        <circle cx="18" cy="20" r="1.2" />
+        <path d="M2 3h3l2.4 12.1a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.3L21 7H6" />
+      </svg>
+    );
+  }
   if (tipo === "precio") {
     return (
       <svg {...comun}>
@@ -53,16 +61,16 @@ function trazaDe(herramientas) {
 }
 
 export default function App() {
-  // Un thread_id por pestaña: el historial lo guarda el checkpointer del grafo.
+  // Un thread_id por pestaña: el historial lo guarda el checkpointer del grafo
+  // y el carrito queda atado a este mismo id (no hay cuentas de usuario).
   const [threadId] = useState(() => crypto.randomUUID());
   const [mensajes, setMensajes] = useState([]);
   const [entrada, setEntrada] = useState("");
   const [pensando, setPensando] = useState(false);
   const [verTrazas, setVerTrazas] = useState(false);
 
-  const [usuario, setUsuario] = useState(null);
   const [items, setItems] = useState([]);
-  const [panel, setPanel] = useState(null);        // "sesion" | "carrito" | null
+  const [panel, setPanel] = useState(null);        // "carrito" | null
   const [agregando, setAgregando] = useState(null);
   const [aviso, setAviso] = useState("");
   const [latido, setLatido] = useState(false);     // animación del ícono al sumar
@@ -73,65 +81,29 @@ export default function App() {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [mensajes, pensando]);
 
-  // Si quedó un token de una sesión anterior, lo revalidamos al abrir.
-  useEffect(() => {
-    if (!api.leerToken()) return;
-    api.quienSoy()
-      .then((r) => { setUsuario(r.usuario); return api.verCarrito(); })
-      .then((r) => setItems(r.items))
-      .catch(() => { api.borrarToken(); setUsuario(null); });
-  }, []);
-
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(""), 3500);
     return () => clearTimeout(t);
   }, [aviso]);
 
-  async function entrar(u, c) {
-    const r = await api.ingresar(u, c);
-    api.guardarToken(r.token);
-    setUsuario(r.usuario);
-    setItems((await api.verCarrito()).items);
-    setPanel(null);
+  function latir() {
+    setLatido(true);
+    setTimeout(() => setLatido(false), 600);
   }
 
-  async function registrar(u, c) {
-    const r = await api.registrar(u, c);
-    api.guardarToken(r.token);
-    setUsuario(r.usuario);
-    setItems([]);
-    setPanel(null);
-  }
-
-  async function cerrarSesion() {
-    await api.salir().catch(() => {});
-    api.borrarToken();
-    setUsuario(null);
-    setItems([]);
-    setPanel(null);
-  }
-
-  async function agregarCarta(carta) {
-    // Ésta es la regla de negocio: sin cuenta no se compra.
-    if (!usuario) {
-      setPanel("sesion");
-      setAviso("Necesitás una cuenta para poder comprar.");
-      return;
-    }
+  // La carta puede estar en varias variantes (set y grado): el botón manda
+  // la que el jugador eligió en el selector de la carta.
+  async function agregarCarta(carta, variante) {
     setAgregando(carta.nombre);
     try {
-      const r = await api.agregarAlCarrito({
-        nombre: carta.nombre,
-        edicion: carta.edicion,
-        precio: carta.precio_eur ? Number(carta.precio_eur) : null,
-        imagen: carta.imagen,
+      const r = await api.agregarAlCarrito(threadId, {
+        inventario_id: variante.id,
         cantidad: 1,
       });
       setItems(r.items);
-      setLatido(true);
-      setTimeout(() => setLatido(false), 600);
-      setAviso(`${carta.nombre} va al carrito.`);
+      latir();
+      setAviso(`${carta.nombre} va al carrito. Cuando quieras cerrar la compra, decíselo a Urza.`);
     } catch (e) {
       setAviso(e.message);
     } finally {
@@ -140,12 +112,12 @@ export default function App() {
   }
 
   async function quitar(id) {
-    try { setItems((await api.quitarDelCarrito(id)).items); }
+    try { setItems((await api.quitarDelCarrito(threadId, id)).items); }
     catch (e) { setAviso(e.message); }
   }
 
   async function vaciar() {
-    try { setItems((await api.vaciarCarrito()).items); }
+    try { setItems((await api.vaciarCarrito(threadId)).items); }
     catch (e) { setAviso(e.message); }
   }
 
@@ -163,13 +135,32 @@ export default function App() {
         ...m,
         data.error
           ? { rol: "falla", texto: data.error }
-          : { rol: "urza", texto: data.texto, herramientas: data.herramientas, carta: data.carta },
+          : {
+              rol: "urza",
+              texto: data.texto,
+              herramientas: data.herramientas,
+              carta: data.carta,
+              pedido: data.pedido,
+            },
       ]);
+      // El agente pudo haber agregado, sacado o cerrado la compra: el
+      // carrito que vuelve es la verdad.
+      if (Array.isArray(data.carrito)) {
+        const antes = items.reduce((s, i) => s + i.cantidad, 0);
+        const ahora = data.carrito.reduce((s, i) => s + i.cantidad, 0);
+        setItems(data.carrito);
+        if (ahora > antes) latir();
+      }
     } catch (e) {
       setMensajes((m) => [...m, { rol: "falla", texto: e.message }]);
     } finally {
       setPensando(false);
     }
+  }
+
+  function finalizarCompra() {
+    setPanel(null);
+    enviar("Quiero finalizar la compra");
   }
 
   const vacio = mensajes.length === 0 && !pensando;
@@ -180,15 +171,6 @@ export default function App() {
       {vacio && <Bolitas />}
 
       <header className="barra-superior">
-        {usuario ? (
-          <>
-            <span className="usuario">{usuario}</span>
-            <button className="enlace" onClick={cerrarSesion}>Salir</button>
-          </>
-        ) : (
-          <button className="enlace" onClick={() => setPanel("sesion")}>Entrar</button>
-        )}
-
         {/* El carrito sólo se muestra cuando hay algo adentro. */}
         {unidades > 0 && (
           <button
@@ -218,9 +200,14 @@ export default function App() {
                   <Carta3D
                     carta={m.carta}
                     onAgregar={agregarCarta}
-                    sesionIniciada={Boolean(usuario)}
                     agregando={agregando === m.carta.nombre}
                   />
+                )}
+                {m.pedido && (
+                  <div className="comprobante">
+                    <h3>Comprobante de pedido</h3>
+                    {m.pedido}
+                  </div>
                 )}
               </div>
             );
@@ -283,11 +270,15 @@ export default function App() {
 
       {aviso && <p className="aviso" role="status">{aviso}</p>}
 
-      {panel === "sesion" && (
-        <Sesion onEntrar={entrar} onRegistrar={registrar} onCerrar={() => setPanel(null)} />
-      )}
       {panel === "carrito" && (
-        <Carrito items={items} onQuitar={quitar} onVaciar={vaciar} onCerrar={() => setPanel(null)} />
+        <Carrito
+          items={items}
+          onQuitar={quitar}
+          onVaciar={vaciar}
+          onFinalizar={finalizarCompra}
+          onCerrar={() => setPanel(null)}
+          ocupado={pensando}
+        />
       )}
     </div>
   );

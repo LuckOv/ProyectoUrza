@@ -1,22 +1,37 @@
 import urllib.parse
-from pathlib import Path
+from datetime import date
 
-import pandas as pd
 import requests
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from cartas import ficha, resolver_nombre, _plano
+import base
+import inventario
+import tienda
+from cartas import ficha, resolver_nombre
 from reglas import consultar_reglas_mtg
-
-# Anclado a la carpeta de este archivo, no al directorio desde donde se lanza
-# el proceso: así funciona igual con uvicorn, con el test local o desde la raíz.
-CSV_PATH = Path(__file__).parent / "inventario.csv"
 
 # Cabecera obligatoria que exige la API de Scryfall para no bloquear la petición
 HEADERS = {
     "User-Agent": "UrzaBot/1.0 (ProyectoEstudiantilISFT197)",
     "Accept": "application/json"
 }
+
+
+def _pesos(valor) -> str:
+    """12345.6 → '$12.346' (formato argentino, sin centavos)."""
+    if valor is None:
+        return "sin precio"
+    return "$" + f"{round(valor):,}".replace(",", ".")
+
+
+def _linea_variante(v: dict) -> str:
+    precio = _pesos(v["precio_ars"])
+    if v["descuento"]:
+        precio += f" (con {v['descuento']:g}% off, antes {_pesos(v['precio_lista_ars'])})"
+    stock = f"{v['cantidad']} en stock" if v["cantidad"] > 0 else "sin stock"
+    return f"- [variante {v['id']}] {v['set_nombre'] or 's/set'} · {v['grado']} · {precio} · {stock}"
+
 
 @tool
 def consultar_precio_cardmarket(nombre_carta: str) -> str:
@@ -61,12 +76,11 @@ def consultar_precio_cardmarket(nombre_carta: str) -> str:
 
 @tool
 def consultar_stock_local(nombre_carta: str) -> str:
-    """Revisa en el archivo CSV de inventario local si hay stock físico disponible de una carta.
+    """Revisa en el inventario de la tienda si hay stock de una carta y a qué precio.
 
-    Acepta el nombre en cualquier idioma y con errores de tipeo: antes de
-    buscar lo traduce al nombre oficial en inglés. La comparación contra el
-    CSV ignora acentos y puntuación, así una fila escrita sin la coma
-    igual matchea.
+    Devuelve cada variante que tiene la tienda (set y grado: Sin graduar,
+    PSA 10, etc.) con su precio en pesos y unidades. Acepta el nombre en
+    cualquier idioma y con errores de tipeo.
     """
     if isinstance(nombre_carta, dict):
         nombre_carta = nombre_carta.get("nombre_carta", "")
@@ -75,20 +89,19 @@ def consultar_stock_local(nombre_carta: str) -> str:
     nombre_limpio = resolver_nombre(original) or original
 
     try:
-        df = pd.read_csv(CSV_PATH)
-        coincidencia = df[df['Carta'].map(_plano) == _plano(nombre_limpio)]
-        
-        if not coincidencia.empty:
-            cantidad = int(coincidencia.iloc[0]['Cantidad'])
-            edicion = coincidencia.iloc[0]['Edición']
-            nombre_real = coincidencia.iloc[0]['Carta']
-            if cantidad > 0:
-                return f"Tenemos {cantidad} copias de '{nombre_real}' ({edicion}) en stock en la tienda."
-            return f"Actualmente no nos queda stock de '{nombre_real}' ({edicion})."
-        
-        return f"La carta '{nombre_limpio}' no figura en nuestro inventario local."
+        variantes = inventario.variantes_de(nombre_limpio)
     except Exception as e:
-        return f"Error al acceder al inventario local: {str(e)}"
+        return f"Error al acceder al inventario: {e}"
+
+    if not variantes:
+        return f"La carta '{nombre_limpio}' no figura en el inventario de la tienda."
+    total = sum(v["cantidad"] for v in variantes)
+    encabezado = (
+        f"Stock de '{variantes[0]['nombre']}': {total} unidades en total."
+        if total else f"No nos queda stock de '{variantes[0]['nombre']}'."
+    )
+    return encabezado + "\n" + "\n".join(_linea_variante(v) for v in variantes)
+
 
 @tool
 def consultar_datos_carta(nombre_carta: str) -> str:
@@ -127,9 +140,126 @@ def consultar_datos_carta(nombre_carta: str) -> str:
     return "\n".join(partes)
 
 
+# --- compra --------------------------------------------------------------------
+#
+# El carrito es de la conversación. LangGraph le pasa a cada herramienta la
+# config con la que se invocó el grafo; de ahí sale el thread_id. El
+# parámetro `config` no lo ve el modelo: lo inyecta LangChain solo.
+
+def _thread(config: RunnableConfig) -> str:
+    return (config or {}).get("configurable", {}).get("thread_id", "")
+
+
+def _resumen_carrito(items: list) -> str:
+    if not items:
+        return "El carrito está vacío."
+    lineas = [
+        f"- {i['cantidad']} x {i['nombre']} ({i['edicion'] or 's/set'}, {i['grado']}) a {_pesos(i['precio'])} c/u"
+        for i in items
+    ]
+    return "Carrito actual:\n" + "\n".join(lineas) + f"\nTotal: {_pesos(tienda.total_de(items))}"
+
+
+@tool
+def agregar_al_carrito(nombre_carta: str, cantidad: int, config: RunnableConfig,
+                       variante_id: int | None = None) -> str:
+    """Agrega copias de una carta al carrito del jugador.
+
+    Usar cuando el jugador dice que quiere comprar, llevar o reservar una
+    carta. Si la tienda tiene la carta en más de una variante (set o grado)
+    con stock y el jugador no eligió, la herramienta devuelve las opciones:
+    preguntale cuál quiere y volvé a llamarla con `variante_id`.
+    Controla sola que haya stock suficiente.
+    """
+    if isinstance(nombre_carta, dict):
+        nombre_carta = nombre_carta.get("nombre_carta", "")
+    cantidad = int(cantidad or 1)
+    thread = _thread(config)
+
+    if variante_id:
+        elegida = inventario.obtener(int(variante_id))
+        if not elegida:
+            return f"No existe la variante {variante_id} en el inventario."
+    else:
+        original = str(nombre_carta).strip()
+        oficial = resolver_nombre(original) or original
+        variantes = inventario.variantes_de(oficial)
+        if not variantes:
+            return f"'{oficial}' no figura en el inventario de la tienda."
+        con_stock = [v for v in variantes if v["cantidad"] > 0]
+        if not con_stock:
+            return f"No nos queda stock de '{variantes[0]['nombre']}'."
+        if len(con_stock) > 1:
+            return (
+                f"Hay {len(con_stock)} variantes de '{con_stock[0]['nombre']}' con stock. "
+                "Preguntale al jugador cuál quiere y volvé a llamar con variante_id:\n"
+                + "\n".join(_linea_variante(v) for v in con_stock)
+            )
+        elegida = con_stock[0]
+
+    try:
+        items = tienda.agregar(thread, elegida["id"], cantidad)
+    except ValueError as e:
+        return f"No se pudo agregar: {e}"
+    return (
+        f"Agregué {cantidad} x '{elegida['nombre']}' ({elegida['set_nombre']}, {elegida['grado']}) al carrito.\n"
+        + _resumen_carrito(items)
+    )
+
+
+@tool
+def ver_carrito(config: RunnableConfig) -> str:
+    """Muestra qué cartas tiene el jugador en el carrito y el total en pesos."""
+    return _resumen_carrito(tienda.ver_carrito(_thread(config)))
+
+
+@tool
+def quitar_del_carrito(nombre_carta: str, config: RunnableConfig) -> str:
+    """Saca una carta del carrito del jugador."""
+    if isinstance(nombre_carta, dict):
+        nombre_carta = nombre_carta.get("nombre_carta", "")
+    original = str(nombre_carta).strip()
+    oficial = resolver_nombre(original) or original
+    thread = _thread(config)
+    if not tienda.quitar_por_nombre(thread, oficial):
+        return f"'{oficial}' no estaba en el carrito.\n" + _resumen_carrito(tienda.ver_carrito(thread))
+    return f"Saqué '{oficial}' del carrito.\n" + _resumen_carrito(tienda.ver_carrito(thread))
+
+
+@tool
+def confirmar_compra(nombre: str, apellido: str, fecha_retiro: str, hora_retiro: str,
+                     config: RunnableConfig) -> str:
+    """Cierra la compra y registra el pedido para retirar en el local.
+
+    Llamar SOLO cuando el jugador ya confirmó que quiere finalizar la compra
+    y ya dio su nombre, su apellido y el día y la hora en que pasa a retirar.
+    fecha_retiro va en formato AAAA-MM-DD y hora_retiro en HH:MM (24 hs),
+    calculadas a partir de lo que dijo el jugador y la fecha de hoy.
+    Si el horario no sirve, la herramienta explica por qué: transmitíselo al
+    jugador y pedile otro. Nunca inventar ninguno de los datos.
+    """
+    try:
+        pedido = tienda.confirmar_pedido(_thread(config), nombre, apellido, fecha_retiro, hora_retiro)
+    except ValueError as e:
+        return f"No se pudo confirmar la compra: {e}"
+
+    dia = base.NOMBRE_DIA[base.DIAS[date.fromisoformat(pedido["fecha_retiro"]).weekday()]]
+    d = pedido["fecha_retiro"]
+    detalle = "\n".join(f"- {i['cantidad']} x {i['nombre']} ({i['grado']})" for i in pedido["items"])
+    return (
+        f"Pedido #{pedido['id']} confirmado a nombre de {pedido['nombre']} {pedido['apellido']}.\n"
+        f"Retira: {dia} {d[8:10]}/{d[5:7]} a las {pedido['hora_retiro']} hs.\n"
+        f"{detalle}\nTotal: {_pesos(pedido['total'])}"
+    )
+
+
 lista_tools = [
     consultar_precio_cardmarket,
     consultar_stock_local,
     consultar_datos_carta,
     consultar_reglas_mtg,
+    agregar_al_carrito,
+    ver_carrito,
+    quitar_del_carrito,
+    confirmar_compra,
 ]

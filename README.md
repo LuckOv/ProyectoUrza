@@ -7,17 +7,27 @@
 ## Qué puede hacer hoy
 
 - **Saber si hay una carta en stock**: "¿Tenés Cavern of Souls?" → te dice cuántas hay y en qué edición.
-- **Pasarle el precio**: "Precio de Llanowar Elves" → te dice el precio en euros más actual del mercado.
+- **Pasarle el precio**: "Precio de Llanowar Elves" → te dice el precio de la tienda en pesos (y, si querés, la referencia del mercado europeo).
 - **Mostrarte la carta**: cuando hablás de una, aparece la carta para que la reconozcas de un vistazo.
-- **Armar tu carrito**: te creás una cuenta y vas guardando cartas para reservarlas.
+- **Comprar desde el chat**: le decís qué cartas querés, Urza las va sumando al carrito y te pregunta si querés algo más o cerrar la compra. Al cerrar te pide nombre, apellido y qué día y a qué hora pasás a retirar (dentro del horario del local). No hace falta crear cuenta.
 - **Resolver dudas del juego**: "¿Puedo responder con un instante antes de que mi criatura muera?" → te contesta con base en las reglas oficiales y te cita la regla.
 
 URZA habla en español (de Argentina, como un vendedor de barrio).
 
+## Panel del vendedor (Mesa Central)
+
+En `http://localhost:5173/vendedor.html`, con la clave de vendedor:
+
+- **Inventario**: todas las cartas con foto, grado (PSA), precio y stock. Para agregar una, la buscás en Scryfall, elegís la impresión y cargás cuántas tenés.
+- **Pedidos**: calendario con los retiros de cada día; marcás un pedido como entregado o rechazado (si se rechaza, las cartas vuelven al stock).
+- **Dashboard**: cuánto stock hay, cuánto vale, pedidos abiertos, actividad reciente.
+- **Historial**: el protocolo de todos los pedidos, con tus comentarios, exportable a CSV.
+- **Configuración**: horarios del local, precio del dólar (automático o manual) y descuentos.
+
 ## Lo que viene (en camino)
 
 - **Un agente de historia**: preguntar por el lore de MTG (planos, personajes, trasfondo de las cartas).
-- **Alta de stock para el vendedor**: que el dueño de la tienda agregue cartas al inventario desde el chat. Solo él; los jugadores no.
+- **Alta de stock por chat para el vendedor** (desde el panel ya se puede).
 - **Armador de mazos**: recomendaciones para construir un mazo, usando cartas que la tienda ya tiene en stock.
 - **Reconocimiento de fotos (a futuro)**: sacar o enviar una foto de una carta. Los jugadores podrán preguntar si hay stock; el vendedor podrá cargarla al stock directamente desde la foto.
 
@@ -43,9 +53,10 @@ URZA habla en español (de Argentina, como un vendedor de barrio).
    cd ..
    ```
 
-3. Cargá tu clave de Groq. Creá el archivo `backend\.env` y poné adentro:
+3. Cargá tus claves. Creá el archivo `backend\.env` y poné adentro:
    ```
    GROQ_API_KEY=tu_clave_acá
+   VENDEDOR_CLAVE=la_clave_del_panel
    ```
 
 ## Cómo levantarlo
@@ -60,7 +71,7 @@ Si todo anda, `http://localhost:8000/salud` responde `{"ok": true}`.
 ```powershell
 npm run dev
 ```
-Después abrí `http://localhost:5173` en el navegador y chateá.
+Después abrí `http://localhost:5173` en el navegador y chateá. El panel del vendedor está en `http://localhost:5173/vendedor.html`.
 
 ### Base de reglas (una sola vez)
 

@@ -1,17 +1,18 @@
-"""Datos de una carta para mostrarla en pantalla: imagen, precio y stock.
+"""Todo lo que viene de Scryfall: nombres, fichas, imágenes e impresiones.
 
-Separado de tools.py a propósito. Aquello es lo que usa el agente para razonar;
-esto es lo que necesita el frontend para dibujar la carta.
+Separado de tools.py a propósito. Aquello es lo que usa el agente para
+razonar; esto es lo que necesitan el frontend del cliente (dibujar la carta)
+y el panel del vendedor (buscar una carta para darla de alta).
+
+El stock y los precios de la tienda NO salen de acá sino de inventario.py.
 """
 
+import time
 import unicodedata
 import urllib.parse
-from pathlib import Path
 
-import pandas as pd
 import requests
 
-CSV_PATH = Path(__file__).parent / "inventario.csv"
 HEADERS = {
     "User-Agent": "UrzaBot/1.0 (ProyectoEstudiantilISFT197)",
     "Accept": "application/json",
@@ -21,6 +22,7 @@ HEADERS = {
 # Guardar lo que ya vino evita repetir el pedido y respeta su límite de uso.
 _cache = {}
 _nombres = {}
+_pool_standard = {"total": None, "cuando": 0.0}
 
 
 def _pedir(url):
@@ -68,15 +70,18 @@ def resolver_nombre(nombre: str):
         datos = _pedir(f"https://api.scryfall.com/cards/named?fuzzy={cod}")
 
     oficial = datos.get("name") if datos else None
-    _nombres[clave] = oficial
+    # Sólo se guardan los aciertos: si Scryfall no respondió (sin red), la
+    # próxima vez se vuelve a intentar.
+    if oficial:
+        _nombres[clave] = oficial
     return oficial
 
 
 def _plano(texto: str) -> str:
     """Deja el nombre comparable: sin acentos, sin puntuación y en minúsculas.
 
-    Así 'Maha, Its Feathers Night' del catálogo matchea con la fila del CSV
-    que quedó escrita sin la coma.
+    Así 'Maha, Its Feathers Night' del catálogo matchea con una fila que
+    quedó escrita sin la coma.
     """
     sin_acentos = unicodedata.normalize("NFKD", str(texto))
     sin_acentos = "".join(c for c in sin_acentos if not unicodedata.combining(c))
@@ -84,32 +89,27 @@ def _plano(texto: str) -> str:
     return " ".join(limpio.split())   # colapsa los espacios repetidos
 
 
-def _imagen(datos: dict):
+def _imagen(datos: dict, tamano: str = "normal"):
     """Saca la imagen del frente, contemplando las cartas de doble cara.
 
     En las de doble cara, Scryfall no trae image_uris arriba sino un
     card_faces con una entrada por cara. Tomamos la primera.
     """
     if datos.get("image_uris"):
-        return datos["image_uris"].get("normal") or datos["image_uris"].get("large")
-    caras = datos.get("card_faces") or []
-    for cara in caras:
+        return datos["image_uris"].get(tamano) or datos["image_uris"].get("large")
+    for cara in datos.get("card_faces") or []:
         if cara.get("image_uris"):
-            return cara["image_uris"].get("normal") or cara["image_uris"].get("large")
+            return cara["image_uris"].get(tamano) or cara["image_uris"].get("large")
     return None
 
 
 def stock_de(nombre: str):
-    """Cuántas copias hay en la tienda. Devuelve (cantidad, edición) o (None, None)."""
-    try:
-        df = pd.read_csv(CSV_PATH)
-        buscado = _plano(nombre)
-        fila = df[df["Carta"].map(_plano) == buscado]
-        if fila.empty:
-            return None, None
-        return int(fila.iloc[0]["Cantidad"]), str(fila.iloc[0]["Edición"])
-    except Exception:
-        return None, None
+    """Cuántas copias hay en la tienda. Devuelve (cantidad, edición) o (None, None).
+
+    Suma todas las variantes (sets y grados) de la carta.
+    """
+    import inventario   # import tardío: inventario también usa este módulo
+    return inventario.stock_total(nombre)
 
 
 def version_es(nombre_oficial: str):
@@ -182,34 +182,131 @@ def ficha(nombre: str):
 
 
 def buscar(nombre: str):
-    """Devuelve los datos de una carta, o None si Scryfall no la conoce."""
+    """Datos de una carta para dibujarla en el chat, o None si Scryfall no la conoce.
+
+    Lo de Scryfall (imagen, tipo) se cachea; el stock y el precio de la
+    tienda se releen siempre, porque cambian con cada venta o edición.
+    """
+    import inventario
+
     clave = (nombre or "").strip().lower()
     if not clave:
         return None
-    if clave in _cache:
-        return _cache[clave]
 
-    oficial = resolver_nombre(nombre)
-    if not oficial:
-        return None
+    base = _cache.get(clave)
+    if base is None:
+        oficial = resolver_nombre(nombre)
+        if not oficial:
+            return None
+        datos = _pedir(f"https://api.scryfall.com/cards/named?exact={urllib.parse.quote(oficial)}")
+        if not datos:
+            return None
+        precios = datos.get("prices") or {}
+        base = {
+            "nombre": datos.get("name"),
+            "imagen": _imagen(datos),
+            "edicion_scryfall": datos.get("set_name"),
+            "precio_mercado_usd": precios.get("usd"),
+            "tipo": datos.get("type_line"),
+            "texto": datos.get("oracle_text"),
+            "scryfall": datos.get("scryfall_uri"),
+        }
+        _cache[clave] = base
 
-    datos = _pedir(f"https://api.scryfall.com/cards/named?exact={urllib.parse.quote(oficial)}")
-    if not datos:
-        return None
+    variantes = inventario.variantes_de(base["nombre"])
+    con_stock = [v for v in variantes if v["cantidad"] > 0]
+    primera = (con_stock or variantes or [None])[0]
 
-    cantidad, edicion_tienda = stock_de(datos.get("name", nombre))
-    precios = datos.get("prices") or {}
-
-    carta = {
-        "nombre": datos.get("name"),
-        "imagen": _imagen(datos),
-        "edicion": edicion_tienda or datos.get("set_name"),
-        "precio_eur": precios.get("eur"),
-        "precio_usd": precios.get("usd"),
-        "tipo": datos.get("type_line"),
-        "texto": datos.get("oracle_text"),
-        "en_stock": cantidad,
-        "scryfall": datos.get("scryfall_uri"),
+    return {
+        **base,
+        # Si la tienda la tiene, se muestra la imagen de la impresión que vende.
+        "imagen": (primera or {}).get("imagen") or base["imagen"],
+        "edicion": (primera or {}).get("set_nombre") or base["edicion_scryfall"],
+        "en_stock": sum(v["cantidad"] for v in variantes) if variantes else None,
+        "precio_ars": min((v["precio_ars"] for v in con_stock), default=None),
+        "variantes": variantes,
     }
-    _cache[clave] = carta
-    return carta
+
+
+# --- para el panel del vendedor ---------------------------------------------
+
+def _impresion(datos: dict) -> dict:
+    """Una impresión de Scryfall reducida a lo que guarda el inventario."""
+    precios = datos.get("prices") or {}
+    usd = precios.get("usd") or precios.get("usd_foil") or precios.get("usd_etched")
+    return {
+        "scryfall_id": datos.get("id"),
+        "nombre": datos.get("name"),
+        "set_codigo": (datos.get("set") or "").upper(),
+        "set_nombre": datos.get("set_name"),
+        "numero": datos.get("collector_number"),
+        "rareza": datos.get("rarity"),
+        "imagen": _imagen(datos),
+        "imagen_chica": _imagen(datos, "small"),
+        "precio_usd": float(usd) if usd else None,
+        "fecha": datos.get("released_at"),
+        "legal_standard": (datos.get("legalities") or {}).get("standard") == "legal",
+    }
+
+
+def autocompletar(texto: str) -> list:
+    """Nombres de cartas que empiezan o se parecen a lo tipeado.
+
+    El autocompletado de Scryfall sólo conoce nombres en inglés; si no
+    encuentra nada, se prueba con la búsqueda multilingüe para que también
+    funcione "Elfos de Llanowar".
+    """
+    texto = (texto or "").strip()
+    if len(texto) < 2:
+        return []
+    datos = _pedir(f"https://api.scryfall.com/cards/autocomplete?q={urllib.parse.quote(texto)}")
+    nombres = (datos or {}).get("data") or []
+    if nombres:
+        return nombres[:15]
+
+    busqueda = _pedir(
+        f"https://api.scryfall.com/cards/search?q={urllib.parse.quote(texto)}"
+        "&include_multilingual=true&unique=cards&order=name"
+    )
+    vistos = []
+    for c in (busqueda or {}).get("data", [])[:15]:
+        if c.get("name") not in vistos:
+            vistos.append(c.get("name"))
+    return vistos
+
+
+def impresiones(nombre: str) -> list:
+    """Todas las impresiones de una carta (una por set/número), de la más nueva a la más vieja."""
+    cod = urllib.parse.quote(f'!"{nombre}"')
+    datos = _pedir(
+        f"https://api.scryfall.com/cards/search?q={cod}&unique=prints&order=released&dir=desc"
+    )
+    return [_impresion(c) for c in (datos or {}).get("data", [])]
+
+
+def impresion_por_id(scryfall_id: str):
+    datos = _pedir(f"https://api.scryfall.com/cards/{urllib.parse.quote(scryfall_id)}")
+    return _impresion(datos) if datos else None
+
+
+def impresion_por_set(nombre: str, set_codigo: str | None):
+    """La impresión de una carta en un set dado (o la más reciente si no se sabe el set)."""
+    if set_codigo:
+        cod = urllib.parse.quote(f'!"{nombre}" set:{set_codigo.lower()}')
+        datos = _pedir(f"https://api.scryfall.com/cards/search?q={cod}&unique=prints")
+        if datos and datos.get("data"):
+            return _impresion(datos["data"][0])
+    datos = _pedir(f"https://api.scryfall.com/cards/named?exact={urllib.parse.quote(nombre)}")
+    if not datos:
+        datos = _pedir(f"https://api.scryfall.com/cards/named?fuzzy={urllib.parse.quote(nombre)}")
+    return _impresion(datos) if datos else None
+
+
+def total_pool_standard():
+    """Cuántas cartas distintas son legales hoy en Standard. Se cachea un día."""
+    if _pool_standard["total"] and time.time() - _pool_standard["cuando"] < 86400:
+        return _pool_standard["total"]
+    datos = _pedir("https://api.scryfall.com/cards/search?q=f%3Astandard&unique=cards")
+    if datos and datos.get("total_cards"):
+        _pool_standard.update(total=datos["total_cards"], cuando=time.time())
+    return _pool_standard["total"]

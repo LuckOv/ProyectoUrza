@@ -1,13 +1,23 @@
 import { useRef, useState } from "react";
 
+import { dolares, pesos } from "./formato.js";
+
 /* La carta se inclina siguiendo el puntero y se levanta al pasarle por encima.
    El efecto es una rotación en dos ejes proporcional a qué tan lejos del centro
-   está el mouse, más un brillo que se desplaza como el de una carta foil. */
-export default function Carta3D({ carta, onAgregar, sesionIniciada, agregando }) {
+   está el mouse, más un brillo que se desplaza como el de una carta foil.
+
+   Si la tienda tiene la carta en varias variantes (set y grado, ej. "Sin
+   graduar" o "PSA 10"), aparece un selector y el botón agrega la elegida. */
+export default function Carta3D({ carta, onAgregar, agregando }) {
   const marcoRef = useRef(null);
   const [giro, setGiro] = useState({ x: 0, y: 0 });
   const [luz, setLuz] = useState({ x: 50, y: 50 });
   const [encima, setEncima] = useState(false);
+
+  const variantes = carta.variantes || [];
+  const conStock = variantes.filter((v) => v.cantidad > 0);
+  const [elegidaId, setElegidaId] = useState(conStock[0]?.id ?? null);
+  const elegida = variantes.find((v) => v.id === elegidaId) || conStock[0] || null;
 
   const mover = (e) => {
     const caja = marcoRef.current.getBoundingClientRect();
@@ -25,8 +35,14 @@ export default function Carta3D({ carta, onAgregar, sesionIniciada, agregando })
     setLuz({ x: 50, y: 50 });
   };
 
-  const precio = carta.precio_eur ? `€${carta.precio_eur}` : carta.precio_usd ? `$${carta.precio_usd}` : null;
-  const hay = typeof carta.en_stock === "number" && carta.en_stock > 0;
+  const imagen = elegida?.imagen || carta.imagen;
+  let stock;
+  if (elegida) stock = `${elegida.cantidad} en stock · ${pesos(elegida.precio_ars)}`;
+  else if (variantes.length) stock = "Sin stock";
+  else stock = "No está en la tienda";
+  const referencia = !variantes.length && carta.precio_mercado_usd
+    ? `Mercado: ${dolares(Number(carta.precio_mercado_usd))}`
+    : null;
 
   return (
     <div className="carta3d">
@@ -41,8 +57,8 @@ export default function Carta3D({ carta, onAgregar, sesionIniciada, agregando })
           className="carta3d-cuerpo"
           style={{ transform: `rotateX(${giro.x}deg) rotateY(${giro.y}deg)` }}
         >
-          {carta.imagen ? (
-            <img src={carta.imagen} alt={carta.nombre} draggable="false" />
+          {imagen ? (
+            <img src={imagen} alt={carta.nombre} draggable="false" />
           ) : (
             <div className="carta3d-sinimagen">{carta.nombre}</div>
           )}
@@ -55,19 +71,36 @@ export default function Carta3D({ carta, onAgregar, sesionIniciada, agregando })
 
       <div className="carta3d-datos">
         <p className="carta3d-nombre">{carta.nombre}</p>
-        {carta.edicion && <p className="carta3d-edicion">{carta.edicion}</p>}
-        <p className="carta3d-stock">
-          {hay ? `${carta.en_stock} en stock` : carta.en_stock === 0 ? "Sin stock" : "No está en la tienda"}
-          {precio && ` · ${precio}`}
+        <p className="carta3d-edicion">
+          {elegida ? `${elegida.set_nombre || ""} · ${elegida.grado}` : carta.edicion}
         </p>
+        <p className="carta3d-stock">
+          {stock}
+          {elegida?.descuento > 0 && ` (−${elegida.descuento}%)`}
+          {referencia && ` · ${referencia}`}
+        </p>
+
+        {conStock.length > 1 && (
+          <select
+            className="carta3d-variante"
+            value={elegida?.id ?? ""}
+            onChange={(e) => setElegidaId(Number(e.target.value))}
+            aria-label="Elegí la versión"
+          >
+            {conStock.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.set_nombre} · {v.grado} · {pesos(v.precio_ars)}
+              </option>
+            ))}
+          </select>
+        )}
 
         <button
           className="carta3d-agregar"
-          onClick={() => onAgregar(carta)}
-          disabled={!hay || agregando}
-          title={!sesionIniciada ? "Necesitás iniciar sesión para comprar" : undefined}
+          onClick={() => onAgregar(carta, elegida)}
+          disabled={!elegida || agregando}
         >
-          {agregando ? "Agregando…" : !sesionIniciada ? "Iniciá sesión para comprar" : "Agregar al carrito"}
+          {agregando ? "Agregando…" : "Agregar al carrito"}
         </button>
       </div>
     </div>
