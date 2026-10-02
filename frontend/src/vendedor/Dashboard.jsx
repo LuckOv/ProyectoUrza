@@ -2,18 +2,8 @@ import { useEffect, useState } from "react";
 
 import { dolares, numero, pesos } from "../formato.js";
 import * as api from "./api.js";
-import { Etiqueta, EtiquetaEstado, fechaCorta, haceCuanto } from "./comunes.jsx";
-
-// Cada tipo de movimiento con su etiqueta. El texto dice qué fue; el color acompaña.
-const TIPOS = {
-  reserva: { texto: "Reserva", tono: "estado-pendiente" },
-  venta: { texto: "Venta", tono: "estado-realizada" },
-  devolucion: { texto: "Devolución", tono: "neutro" },
-  entrada: { texto: "Entrada", tono: "stock-ok" },
-  ajuste: { texto: "Ajuste", tono: "stock-bajo" },
-  edicion: { texto: "Edición", tono: "neutro" },
-  baja: { texto: "Baja", tono: "estado-rechazada" },
-};
+import { EtiquetaEstado, fechaCorta } from "./comunes.jsx";
+import GraficoVentas from "./GraficoVentas.jsx";
 
 function Tile({ titulo, valor, nota, tono }) {
   return (
@@ -91,32 +81,25 @@ export default function Dashboard({ ir }) {
         />
       </div>
 
+      <GraficoVentas dias={d.ventas_dias || []} cartas={d.ventas_cartas || []} />
+
       <div className="dos-columnas">
         <div className="hoja lista-hoja">
           <div className="lista-cabeza">
-            <h2>Actividad reciente</h2>
-            <button className="enlace" onClick={() => ir("historial")}>Ver historial</button>
+            <h2>Próximos retiros</h2>
+            <button className="enlace" onClick={() => ir("pedidos")}>Ver calendario</button>
           </div>
-          {d.actividad.length === 0 && <p className="vacio">Todavía no hay movimientos.</p>}
-          <ul className="actividad">
-            {d.actividad.map((m) => {
-              const tipo = TIPOS[m.tipo] || { texto: m.tipo, tono: "neutro" };
-              return (
-                <li key={m.id}>
-                  <div>
-                    <p className="actividad-titulo">{m.titulo}</p>
-                    <p className="apagado">{m.detalle}</p>
-                  </div>
-                  <div className="actividad-lado">
-                    <Etiqueta tono={tipo.tono}>{tipo.texto}</Etiqueta>
-                    <span className="apagado">{haceCuanto(m.fecha)}</span>
-                  </div>
-                </li>
-              );
-            })}
+          {d.proximos.length === 0 && <p className="vacio">No hay pedidos pendientes.</p>}
+          <ul className="proximos">
+            {d.proximos.map((p) => (
+              <li key={p.id}>
+                <span className="proximos-fecha">{fechaCorta(p.fecha_retiro)} · {p.hora_retiro}</span>
+                <span>#{p.id} {p.nombre} {p.apellido}</span>
+                <EtiquetaEstado estado={p.estado} corta />
+              </li>
+            ))}
           </ul>
         </div>
-
         <div className="columna">
           <div className="hoja">
             <h2>Resumen del stock</h2>
@@ -129,22 +112,6 @@ export default function Dashboard({ ir }) {
             <p className="apagado chico">Ventas de los últimos 30 días: {pesos(d.ventas_30)}</p>
           </div>
 
-          <div className="hoja">
-            <div className="lista-cabeza">
-              <h2>Próximos retiros</h2>
-              <button className="enlace" onClick={() => ir("pedidos")}>Ver calendario</button>
-            </div>
-            {d.proximos.length === 0 && <p className="vacio">No hay pedidos pendientes.</p>}
-            <ul className="proximos">
-              {d.proximos.map((p) => (
-                <li key={p.id}>
-                  <span className="proximos-fecha">{fechaCorta(p.fecha_retiro)} · {p.hora_retiro}</span>
-                  <span>#{p.id} {p.nombre} {p.apellido}</span>
-                  <EtiquetaEstado estado={p.estado} corta />
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
       </div>
 

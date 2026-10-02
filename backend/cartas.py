@@ -223,7 +223,8 @@ def buscar(nombre: str):
         "imagen": (primera or {}).get("imagen") or base["imagen"],
         "edicion": (primera or {}).get("set_nombre") or base["edicion_scryfall"],
         "en_stock": sum(v["cantidad"] for v in variantes) if variantes else None,
-        "precio_ars": min((v["precio_ars"] for v in con_stock), default=None),
+        # Las variantes sin precio cargado no cuentan (compararlas con None rompía).
+        "precio_ars": min((v["precio_ars"] for v in con_stock if v["precio_ars"] is not None), default=None),
         "variantes": variantes,
     }
 
@@ -310,3 +311,74 @@ def total_pool_standard():
     if datos and datos.get("total_cards"):
         _pool_standard.update(total=datos["total_cards"], cuando=time.time())
     return _pool_standard["total"]
+
+
+# --- armado de mazos -------------------------------------------------------------
+
+COLORES = {
+    "blanco": "W", "blanca": "W", "blancos": "W", "w": "W",
+    "azul": "U", "azules": "U", "u": "U",
+    "negro": "B", "negra": "B", "negros": "B", "b": "B",
+    "rojo": "R", "roja": "R", "rojos": "R", "r": "R",
+    "verde": "G", "verdes": "G", "g": "G",
+    "incoloro": "C", "incolora": "C", "c": "C",
+}
+TIPOS = {
+    "criatura": "creature", "criaturas": "creature",
+    "instantaneo": "instant", "instantáneo": "instant", "instantaneos": "instant", "instantáneos": "instant",
+    "conjuro": "sorcery", "conjuros": "sorcery",
+    "encantamiento": "enchantment", "encantamientos": "enchantment",
+    "artefacto": "artifact", "artefactos": "artifact",
+    "tierra": "land", "tierras": "land",
+    "planeswalker": "planeswalker", "planeswalkers": "planeswalker",
+    "batalla": "battle",
+}
+FORMATOS = {"standard", "pioneer", "modern", "legacy", "vintage", "pauper", "commander", "historic", "brawl"}
+
+
+def _letras_de_color(colores: str) -> str:
+    """'rojo y verde' / 'RG' / 'Gruul-ish' → 'RG'. Sólo reconoce lo que entiende."""
+    texto = _plano(colores or "")
+    letras = []
+    for palabra in texto.replace(",", " ").replace("/", " ").split():
+        if palabra in COLORES:
+            letras.append(COLORES[palabra])
+        elif set(palabra) <= set("wubrgc") and len(palabra) <= 5:
+            letras += [c.upper() for c in palabra]
+    return "".join(dict.fromkeys(letras))   # sin repetidos, en orden
+
+
+def consulta_mazo(colores: str = "", formato: str = "", tipo: str = "", palabras_clave: str = "") -> str:
+    """Arma la búsqueda de Scryfall para candidatas de un mazo."""
+    partes = []
+    letras = _letras_de_color(colores)
+    if letras:
+        partes.append(f"id<={letras}")
+    fmt = _plano(formato or "standard").split(" ")[0] or "standard"
+    partes.append(f"f:{fmt if fmt in FORMATOS else 'standard'}")
+    t = TIPOS.get(_plano(tipo or ""), "")
+    if t:
+        partes.append(f"t:{t}")
+    for palabra in (palabras_clave or "").replace(",", " ").split()[:3]:
+        limpia = "".join(c for c in palabra if c.isalnum() or c == "-")
+        if limpia:
+            partes.append(f"(t:{limpia} or o:{limpia})")
+    return " ".join(partes)
+
+
+def candidatas_mazo(consulta: str) -> list:
+    """Cartas de Scryfall para esa búsqueda, ordenadas por popularidad (EDHREC)."""
+    datos = _pedir(
+        f"https://api.scryfall.com/cards/search?q={urllib.parse.quote(consulta)}"
+        "&unique=cards&order=edhrec"
+    )
+    resultado = []
+    for c in (datos or {}).get("data", []):
+        cara = c if c.get("type_line") else ((c.get("card_faces") or [{}])[0])
+        resultado.append({
+            "nombre": c.get("name"),
+            "imagen": _imagen(c),
+            "tipo": cara.get("type_line") or c.get("type_line") or "",
+            "coste": cara.get("mana_cost") or c.get("mana_cost") or "",
+        })
+    return resultado

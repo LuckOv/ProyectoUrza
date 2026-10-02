@@ -105,6 +105,46 @@ def editar_carta(item_id: int, datos: EdicionCarta):
         _error(e)
 
 
+class NuevaVariante(BaseModel):
+    grado: str
+    cantidad: int = 1
+    precio_usd: float | None = None
+
+
+@protegido.post("/inventario/{item_id}/variante")
+def nueva_variante(item_id: int, datos: NuevaVariante):
+    """La misma carta con otro grado (PSA)."""
+    try:
+        return inventario.agregar_variante(item_id, datos.grado, datos.cantidad, datos.precio_usd)
+    except ValueError as e:
+        _error(e)
+
+
+@protegido.get("/precio-sugerido")
+def precio_sugerido(grado: str, scryfall_id: str | None = None, item_id: int | None = None):
+    """Precio en dólares sugerido para una carta en un grado.
+
+    Base: el precio sin graduar de Scryfall de esa impresión. Si hay token de
+    PriceCharting, se usa su precio por grado cuando lo tiene.
+    """
+    nombre, set_nombre, base_usd = "", None, None
+    item = inventario.obtener(item_id) if item_id else None
+    if item:
+        scryfall_id = scryfall_id or item["scryfall_id"]
+        nombre, set_nombre = item["nombre"], item["set_nombre"]
+    if scryfall_id:
+        imp = cartas.impresion_por_id(scryfall_id)
+        if imp:
+            nombre, set_nombre, base_usd = imp["nombre"], imp["set_nombre"], imp["precio_usd"]
+    if base_usd is None and item:
+        # Sin Scryfall: se toma la versión sin graduar de la misma carta, si está cargada.
+        sin_graduar = [v for v in inventario.variantes_de(item["nombre"])
+                       if v["grado"] == "Sin graduar" and v["set_nombre"] == item["set_nombre"]]
+        if sin_graduar:
+            base_usd = sin_graduar[0]["precio_usd"]
+    return inventario.precio_sugerido(grado, base_usd, nombre, set_nombre)
+
+
 @protegido.post("/inventario/borrar")
 def borrar_cartas(datos: Ids):
     return {"borradas": inventario.borrar(datos.ids)}
@@ -211,11 +251,9 @@ def dashboard():
     items = inventario.listar()
     hoy = base.ahora().date()
     inicio_mes = hoy.replace(day=1).isoformat()
-    hace_30 = (hoy - timedelta(days=30)).isoformat()
 
     pedidos = tienda.listar_pedidos()
     pendientes = [p for p in pedidos if p["estado"] == "pendiente"]
-    realizadas_30 = [p for p in pedidos if p["estado"] == "realizada" and p["actualizado"][:10] >= hace_30]
 
     with base.conectar() as con:
         entradas_mes = con.execute(
@@ -227,7 +265,11 @@ def dashboard():
     # Standard tiene la tienda con stock, sobre el total de Scryfall.
     en_standard = {inventario._plano(i["nombre"]) for i in items if i["legal_standard"] and i["cantidad"] > 0}
 
+    ventas_dias, ventas_cartas = _ventas_ultimo_mes(pedidos, hoy)
+
     return {
+        "ventas_dias": ventas_dias,
+        "ventas_cartas": ventas_cartas,
         "unidades": sum(i["cantidad"] for i in items),
         "cartas_distintas": len(items),
         "entradas_mes": entradas_mes,
@@ -240,14 +282,62 @@ def dashboard():
         "stock": {
             "disponible": sum(i["cantidad"] for i in items),
             "reservado": sum(p["unidades"] for p in pendientes),
-            "vendido_30": sum(p["unidades"] for p in realizadas_30),
+            "vendido_30": sum(d["unidades"] for d in ventas_dias),
         },
-        "ventas_30": round(sum(p["total"] for p in realizadas_30)),
+        "ventas_30": round(sum(d["total"] for d in ventas_dias)),
         "actividad": base.movimientos(8),
-        "proximos": sorted(pendientes, key=lambda p: (p["fecha_retiro"], p["hora_retiro"]))[:5],
+        "proximos": sorted(pendientes, key=lambda p: (p["fecha_retiro"], p["hora_retiro"]))[:8],
         "standard": {"tienda": len(en_standard), "total": cartas.total_pool_standard()},
         "dolar": inventario.valor_dolar(),
     }
+
+
+# --- registro de actividad ---------------------------------------------------
+
+@protegido.get("/actividad")
+def actividad(q: str | None = None, tipo: str | None = None, limite: int = 50,
+              antes_de: int | None = None):
+    """Todo lo que pasó en la tienda: stock, pedidos, comentarios y configuración."""
+    limite = max(1, min(limite, 200))
+    filas = base.movimientos(limite + 1, q, tipo, antes_de)
+    return {"movimientos": filas[:limite], "hay_mas": len(filas) > limite}
+
+
+def _ventas_ultimo_mes(pedidos: list, hoy):
+    """Ventas (pedidos 'realizada') de los últimos 30 días, por día y por carta.
+
+    La fecha de venta es cuándo se marcó como realizada (último movimiento
+    'venta' de ese pedido); si no hay registro, la fecha de retiro.
+    """
+    with base.conectar() as con:
+        cuando = {
+            f["pedido_id"]: f["fecha"][:10]
+            for f in con.execute(
+                "SELECT pedido_id, MAX(fecha) AS fecha FROM movimientos "
+                "WHERE tipo = 'venta' AND pedido_id IS NOT NULL GROUP BY pedido_id"
+            ).fetchall()
+        }
+    desde = hoy - timedelta(days=29)
+    por_dia = {(desde + timedelta(days=n)).isoformat(): {"total": 0, "unidades": 0, "pedidos": 0}
+               for n in range(30)}
+    por_carta = {}
+    for p in pedidos:
+        if p["estado"] != "realizada":
+            continue
+        dia = cuando.get(p["id"], p["fecha_retiro"])
+        if dia not in por_dia:
+            continue
+        por_dia[dia]["total"] += p["total"]
+        por_dia[dia]["unidades"] += p["unidades"]
+        por_dia[dia]["pedidos"] += 1
+        for i in p["items"]:
+            c = por_carta.setdefault(i["nombre"], {"nombre": i["nombre"], "unidades": 0, "total": 0})
+            c["unidades"] += i["cantidad"]
+            c["total"] += (i["precio"] or 0) * i["cantidad"]
+    dias = [{"fecha": f, **{k: round(v) if k == "total" else v for k, v in d.items()}}
+            for f, d in por_dia.items()]
+    top = sorted(por_carta.values(), key=lambda c: (-c["unidades"], -c["total"]))[:10]
+    return dias, [{**c, "total": round(c["total"])} for c in top]
 
 
 # --- configuración -----------------------------------------------------------
@@ -259,6 +349,7 @@ class DolarConf(BaseModel):
 
 
 class Configuracion(BaseModel):
+    multiplicadores: dict | None = None
     horarios: dict | None = None
     dolar: DolarConf | None = None
     stock_bajo: int | None = None
@@ -287,6 +378,9 @@ def _config_completa():
         "dolar": inventario.dolar(),
         "stock_bajo": base.config("stock_bajo"),
         "casas": inventario.CASAS_DOLAR,
+        "multiplicadores": base.config("multiplicadores"),
+        "grados": inventario.GRADOS,
+        "pricecharting": bool(os.getenv("PRICECHARTING_TOKEN")),
         "dias": [{"clave": d, "nombre": base.NOMBRE_DIA[d]} for d in base.DIAS],
     }
 
@@ -299,18 +393,30 @@ def ver_config():
 @protegido.put("/config")
 def guardar_config(datos: Configuracion):
     try:
+        if datos.multiplicadores is not None:
+            inventario.guardar_multiplicadores(datos.multiplicadores)
         if datos.horarios is not None:
+            anterior = base.horarios_texto()
             base.guardar_config("horarios", _validar_horarios(datos.horarios))
+            if base.horarios_texto() != anterior:
+                base.registrar_movimiento("config", "Horarios de la tienda actualizados", base.horarios_texto())
         if datos.stock_bajo is not None:
             if datos.stock_bajo < 0:
                 raise ValueError("El umbral de stock bajo no puede ser negativo.")
+            anterior = base.config("stock_bajo")
             base.guardar_config("stock_bajo", datos.stock_bajo)
+            if datos.stock_bajo != anterior:
+                base.registrar_movimiento(
+                    "config", "Aviso de stock bajo actualizado",
+                    f"{anterior} → {datos.stock_bajo} unidades o menos",
+                )
         if datos.dolar is not None:
             if datos.dolar.modo not in ("manual", "auto"):
                 raise ValueError("Modo de dólar inválido.")
             if datos.dolar.casa not in inventario.CASAS_DOLAR:
                 raise ValueError("Tipo de dólar inválido.")
             conf = base.config("dolar")
+            antes = (conf.get("modo"), conf.get("casa"), conf.get("valor"))
             conf.update(modo=datos.dolar.modo, casa=datos.dolar.casa)
             if datos.dolar.modo == "manual":
                 if not datos.dolar.valor or datos.dolar.valor <= 0:
@@ -319,6 +425,12 @@ def guardar_config(datos: Configuracion):
             else:
                 conf.update(valor=inventario.traer_dolar(datos.dolar.casa), actualizado=base.ahora_iso())
             base.guardar_config("dolar", conf)
+            if (conf["modo"], conf["casa"], conf["valor"]) != antes:
+                modo = "manual" if conf["modo"] == "manual" else f"automático ({conf['casa']})"
+                base.registrar_movimiento(
+                    "config", "Precio del dólar actualizado",
+                    f"{modo} · ${conf['valor']:,.0f}".replace(",", "."),
+                )
     except ValueError as e:
         _error(e)
     return _config_completa()
@@ -332,6 +444,10 @@ def actualizar_dolar():
     except ValueError as e:
         _error(e, 502)
     base.guardar_config("dolar", conf)
+    base.registrar_movimiento(
+        "config", "Cotización del dólar actualizada a mano",
+        f"{conf.get('casa', 'blue')} · ${conf['valor']:,.0f}".replace(",", "."),
+    )
     return _config_completa()
 
 

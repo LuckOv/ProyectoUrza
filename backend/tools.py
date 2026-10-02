@@ -6,9 +6,10 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 import base
+import cartas
 import inventario
 import tienda
-from cartas import ficha, resolver_nombre
+from cartas import _plano, ficha, resolver_nombre
 from lore import consultar_lore_mtg
 from reglas import consultar_reglas_mtg
 
@@ -141,6 +142,80 @@ def consultar_datos_carta(nombre_carta: str) -> str:
     return "\n".join(partes)
 
 
+# --- catálogo y mazos --------------------------------------------------------------
+
+@tool
+def listar_cartas_disponibles() -> str:
+    """Resume qué cartas tiene la tienda a la venta (con stock y precio).
+
+    Usar cuando el jugador pregunta qué cartas hay, qué tenés, o pide ver el
+    catálogo. El chat le muestra al jugador un botón con la lista completa y
+    un buscador, así que no hace falta enumerarlas todas.
+    """
+    items = inventario.catalogo()
+    if not items:
+        return "La tienda no tiene cartas con stock en este momento."
+    nombres = list(dict.fromkeys(i["nombre"] for i in items))
+    unidades = sum(i["cantidad"] for i in items)
+    muestra = ", ".join(nombres[:8])
+    return (
+        f"La tienda tiene {len(nombres)} cartas distintas a la venta ({unidades} unidades). "
+        f"Algunas: {muestra}{'…' if len(nombres) > 8 else '.'} "
+        "El jugador ve la lista completa, con buscador, en el botón 'Ver todas las cartas' que aparece debajo de tu mensaje."
+    )
+
+
+@tool(response_format="content_and_artifact")
+def sugerir_cartas_mazo(colores: str = "", formato: str = "standard", tipo: str = "",
+                        palabras_clave: str = "", cantidad: int = 12):
+    """Busca cartas candidatas para armar un mazo y marca cuáles hay en la tienda.
+
+    Usar cuando el jugador pide ayuda para armar un mazo o pregunta qué cartas
+    usar. Parámetros (todos opcionales):
+    - colores: en español o en letras, ej. "rojo y verde", "azul negro", "RG".
+    - formato: standard, pioneer, modern, pauper, commander... (por defecto standard).
+    - tipo: criatura, instantáneo, conjuro, encantamiento, artefacto, tierra, planeswalker.
+    - palabras_clave: en INGLÉS, tribu o mecánica, ej. "elf", "flying", "token", "lifelink".
+    - cantidad: cuántas sugerir (máximo 20).
+    Prioriza las que la tienda tiene en stock. El chat muestra las sugeridas
+    como un abanico de cartas.
+    """
+    cantidad = max(4, min(int(cantidad or 12), 20))
+    consulta = cartas.consulta_mazo(colores, formato, tipo, palabras_clave)
+    candidatas = cartas.candidatas_mazo(consulta)
+    if not candidatas:
+        return (f"Scryfall no devolvió cartas para esa búsqueda ({consulta}). "
+                "Probá con otros colores, formato o palabras clave.", [])
+
+    # Stock de la tienda por nombre (todas las variantes juntas).
+    stock = {}
+    for i in inventario.catalogo():
+        clave = _plano(i["nombre"])
+        previo = stock.get(clave, {"cantidad": 0, "precio_ars": None})
+        precios = [p for p in (previo["precio_ars"], i["precio_ars"]) if p is not None]
+        stock[clave] = {"cantidad": previo["cantidad"] + i["cantidad"], "precio_ars": min(precios) if precios else None}
+
+    en_tienda = [c for c in candidatas if _plano(c["nombre"]) in stock]
+    resto = [c for c in candidatas if _plano(c["nombre"]) not in stock]
+    elegidas = (en_tienda + resto)[:cantidad]
+
+    lineas = []
+    for c in elegidas:
+        s = stock.get(_plano(c["nombre"]))
+        donde = (f"EN LA TIENDA: {s['cantidad']} u., desde {_pesos(s['precio_ars'])}"
+                 if s else "no está en la tienda")
+        lineas.append(f"- {c['nombre']} ({c['tipo']}) — {donde}")
+        c["en_stock"] = bool(s)
+
+    texto = (
+        f"Búsqueda en Scryfall: {consulta}. Candidatas ordenadas por popularidad, "
+        f"primero las que hay en la tienda ({len(en_tienda)} de {len(candidatas)} encontradas):\n"
+        + "\n".join(lineas)
+        + "\nEl jugador ya ve estas cartas en un abanico debajo de tu mensaje."
+    )
+    return texto, elegidas
+
+
 # --- compra --------------------------------------------------------------------
 #
 # El carrito es de la conversación. LangGraph le pasa a cada herramienta la
@@ -260,6 +335,8 @@ lista_tools = [
     consultar_datos_carta,
     consultar_reglas_mtg,
     consultar_lore_mtg,
+    listar_cartas_disponibles,
+    sugerir_cartas_mazo,
     agregar_al_carrito,
     ver_carrito,
     quitar_del_carrito,

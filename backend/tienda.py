@@ -21,8 +21,19 @@ import base
 import inventario
 
 ESTADOS = ["pendiente", "realizada", "rechazada"]
+ETIQUETA_ESTADO = {"pendiente": "pendiente", "realizada": "realizada", "rechazada": "rechazada"}
 RETIENEN_STOCK = {"pendiente", "realizada"}   # en estos estados las cartas no están en el stock
 DIAS_MAXIMOS = 60                              # hasta cuántos días adelante se puede reservar
+
+
+def _recortar(texto: str, largo: int = 90) -> str:
+    texto = " ".join(texto.split())
+    return texto if len(texto) <= largo else texto[: largo - 1] + "…"
+
+
+def _fecha_corta(iso: str) -> str:
+    """'2026-09-29' → '29/09'."""
+    return f"{iso[8:10]}/{iso[5:7]}"
 
 
 # --- carrito -----------------------------------------------------------------
@@ -201,7 +212,8 @@ def _crear_pedido(con, lineas: list, nombre: str, apellido: str, fecha: str, hor
 
     unidades = sum(c for _, c in detalle)
     base.registrar_movimiento(
-        "reserva", f"Pedido #{pedido_id} confirmado",
+        "reserva",
+        f"Pedido #{pedido_id} confirmado por el chat" if origen == "chat" else f"Pedido #{pedido_id} cargado a mano",
         f"{nombre} {apellido} · {unidades} {'carta' if unidades == 1 else 'cartas'}",
         -unidades, pedido_id, con=con,
     )
@@ -316,46 +328,58 @@ def actualizar_pedido(pedido_id: int, estado: str | None = None, comentario: str
     if estado is not None and estado not in ESTADOS:
         raise ValueError(f"Estado inválido. Opciones: {', '.join(ESTADOS)}.")
 
+    quien = f"{actual['nombre']} {actual['apellido']}"
     with base.conectar() as con:
+        # Cada cambio queda en el registro de actividad (Configuración), con
+        # el antes y el después, aunque no mueva stock.
         if estado and estado != actual["estado"]:
             antes = actual["estado"] in RETIENEN_STOCK
             despues = estado in RETIENEN_STOCK
+            nota, unidades = "", 0
             if antes and not despues:
                 for i in actual["items"]:
                     if i["inventario_id"]:
                         inventario.mover_stock(con, i["inventario_id"], i["cantidad"])
-                base.registrar_movimiento(
-                    "devolucion", f"Pedido #{pedido_id} rechazado",
-                    f"{actual['nombre']} {actual['apellido']} · vuelven al stock", actual["unidades"],
-                    pedido_id, con=con,
-                )
+                nota, unidades = " · las cartas volvieron al stock", actual["unidades"]
             elif despues and not antes:
                 for i in actual["items"]:
                     if not i["inventario_id"] or not inventario.mover_stock(con, i["inventario_id"], -i["cantidad"]):
                         raise ValueError(
                             f"No hay stock suficiente de '{i['nombre']}' para reactivar el pedido."
                         )
-                base.registrar_movimiento(
-                    "reserva", f"Pedido #{pedido_id} reactivado",
-                    f"{actual['nombre']} {actual['apellido']}", -actual["unidades"], pedido_id, con=con,
-                )
-            if estado == "realizada":
-                base.registrar_movimiento(
-                    "venta", f"Pedido #{pedido_id} entregado",
-                    f"{actual['nombre']} {actual['apellido']} · ${actual['total']:,.0f}".replace(",", "."),
-                    0, pedido_id, con=con,
-                )
+                nota, unidades = " · las cartas se reservaron de nuevo", -actual["unidades"]
+            tipo = {"realizada": "venta", "rechazada": "devolucion"}.get(estado, "estado")
+            base.registrar_movimiento(
+                tipo, f"Pedido #{pedido_id}: {ETIQUETA_ESTADO[actual['estado']]} → {ETIQUETA_ESTADO[estado]}",
+                f"{quien}{nota}", unidades, pedido_id, con=con,
+            )
             con.execute("UPDATE pedidos SET estado = ? WHERE id = ?", (estado, pedido_id))
 
-        if comentario is not None:
-            con.execute("UPDATE pedidos SET comentario = ? WHERE id = ?", (comentario.strip(), pedido_id))
+        if comentario is not None and comentario.strip() != (actual["comentario"] or "").strip():
+            texto = comentario.strip()
+            con.execute("UPDATE pedidos SET comentario = ? WHERE id = ?", (texto, pedido_id))
+            if not texto:
+                titulo, detalle = f"Comentario borrado en el pedido #{pedido_id}", quien
+            elif not (actual["comentario"] or "").strip():
+                titulo, detalle = f"Comentario agregado al pedido #{pedido_id}", f"“{_recortar(texto)}”"
+            else:
+                titulo, detalle = f"Comentario editado en el pedido #{pedido_id}", f"“{_recortar(texto)}”"
+            base.registrar_movimiento("comentario", titulo, detalle, 0, pedido_id, con=con)
 
         if fecha_retiro is not None or hora_retiro is not None:
             d, h = _parsear(fecha_retiro or actual["fecha_retiro"], hora_retiro or actual["hora_retiro"])
-            con.execute(
-                "UPDATE pedidos SET fecha_retiro = ?, hora_retiro = ? WHERE id = ?",
-                (d.isoformat(), h.strftime("%H:%M"), pedido_id),
-            )
+            nueva_fecha, nueva_hora = d.isoformat(), h.strftime("%H:%M")
+            if (nueva_fecha, nueva_hora) != (actual["fecha_retiro"], actual["hora_retiro"]):
+                con.execute(
+                    "UPDATE pedidos SET fecha_retiro = ?, hora_retiro = ? WHERE id = ?",
+                    (nueva_fecha, nueva_hora, pedido_id),
+                )
+                base.registrar_movimiento(
+                    "pedido", f"Pedido #{pedido_id}: retiro reprogramado",
+                    f"{quien} · {_fecha_corta(actual['fecha_retiro'])} {actual['hora_retiro']} → "
+                    f"{_fecha_corta(nueva_fecha)} {nueva_hora}",
+                    0, pedido_id, con=con,
+                )
 
         con.execute("UPDATE pedidos SET actualizado = ? WHERE id = ?", (base.ahora_iso(), pedido_id))
     return obtener_pedido(pedido_id)

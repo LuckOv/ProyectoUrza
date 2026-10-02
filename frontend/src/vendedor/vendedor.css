@@ -57,15 +57,17 @@ button:disabled { cursor: not-allowed; }
 
 /* --- marco -------------------------------------------------------------- */
 
+/* Fondo propio del panel: cuero liso, sin el marco ornamentado de la tienda.
+   La textura se estira a la ventana y queda fija mientras se scrollea. */
 .mesa {
   position: fixed;
   inset: 0;
-  background: url("/marco.png") center / 100% 100% no-repeat;
+  background: #8a4f22 url("/cuero-vendedor.jpg") center / cover no-repeat;
 }
 
 .mesa-scroll {
   position: absolute;
-  inset: 44px 52px;
+  inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
   border-radius: 6px;
@@ -854,6 +856,83 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
 .lista-elegir { max-height: 220px; overflow-y: auto; border: 1px solid #d9c7a4; border-radius: 8px; padding: 4px 8px; background: var(--pergamino-claro); }
 .lista-elegir label { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 0.9rem; }
 
+/* --- registro de actividad y otro grado ------------------------------------------- */
+
+.registro .actividad { margin-top: 6px; }
+.preferencias > .registro:first-child { border-top: 0; padding-top: 4px; }
+.registro-filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 6px 0 4px; }
+.segmentado.envolvente { flex-wrap: wrap; }
+.segmentado.envolvente button { font-size: 0.88rem; padding: 7px 12px; }
+.grados-existentes { display: flex; flex-wrap: wrap; gap: 6px; }
+.aviso-suave {
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--oro);
+  background: #f6e9c9;
+  color: #5b4214;
+  font-size: 0.88rem;
+}
+
+.multiplicadores { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 14px; }
+.multiplicador > span { white-space: nowrap; }
+.multiplicador {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 10px; border-radius: 8px; background: var(--pergamino-claro); border: 1px solid #d9c7a4;
+  font-weight: 600; font-size: 0.9rem;
+}
+.multiplicador input { width: 70px; padding: 4px 6px; }
+.nota-sugerencia { display: block; color: var(--tinta-suave); }
+.nota-sugerencia.fuente-pricecharting strong { color: var(--verde); }
+
+/* --- gráfico de ventas --------------------------------------------------------------- */
+
+.ventas-controles { display: flex; align-items: center; gap: 12px; }
+.ventas-controles .segmentado button { font-size: 0.88rem; padding: 6px 12px; }
+.grafico { display: flex; gap: 8px; height: 240px; margin-top: 14px; padding-bottom: 24px; }
+.grafico-eje {
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-width: 62px; text-align: right; font-size: 0.74rem; color: var(--tinta-suave);
+  transform: translateY(0.5em);
+}
+.grafico-area { position: relative; flex: 1; min-width: 0; border-bottom: 1px solid #b9a37f; }
+.grafico-linea { position: absolute; left: 0; right: 0; height: 1px; background: #e0cfac; }
+.grafico-columnas { position: absolute; inset: 0; display: flex; align-items: flex-end; }
+.grafico-slot {
+  position: relative; flex: 1; height: 100%;
+  display: flex; align-items: flex-end; justify-content: center; outline: none;
+}
+.grafico-slot.activo { background: rgba(107, 74, 160, 0.08); }
+.grafico-barra {
+  width: min(70%, 24px); min-height: 3px;
+  background: #6b4aa0; border-radius: 4px 4px 0 0;
+}
+.grafico-slot.activo .grafico-barra { background: #57388a; }
+.grafico-x {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  font-size: 0.72rem; color: var(--tinta-suave); white-space: nowrap;
+}
+.grafico-tip {
+  position: absolute; bottom: calc(100% - 10px); left: 50%; z-index: 4;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 10px; border-radius: 7px; white-space: nowrap;
+  background: var(--tinta); color: var(--crema); font-size: 0.82rem;
+  box-shadow: 0 6px 16px rgba(12, 6, 2, 0.4); pointer-events: none;
+}
+.grafico-tip.izquierda { left: auto; right: 50%; }
+.grafico-tip .apagado { color: var(--crema-apagada); }
+
+.barras-h { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.barras-h li { display: grid; grid-template-columns: minmax(110px, 220px) 1fr 140px; gap: 12px; align-items: center; font-size: 0.9rem; }
+.barras-h-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.barras-h-pista { height: 16px; }
+.barras-h-barra { display: block; height: 100%; max-width: 100%; background: #6b4aa0; border-radius: 0 4px 4px 0; }
+.barras-h-valor { font-size: 0.82rem; color: var(--tinta-suave); white-space: nowrap; text-align: right; }
+
+.tabla-chica { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; }
+.tabla-chica th { text-align: left; font-size: 0.8rem; color: var(--tinta-suave); border-bottom: 1px solid var(--borde); padding: 6px 8px; }
+.tabla-chica td { padding: 6px 8px; border-bottom: 1px solid #e0cfac; }
+.tabla-chica .num { text-align: right; }
+
 /* --- modal y avisos ------------------------------------------------------------ */
 
 .velo {
@@ -955,7 +1034,6 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
 }
 
 @media (max-width: 760px) {
-  .mesa-scroll { inset: 14px; }
   .barra { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
   .pestanas { order: 3; width: 100%; margin-left: 0; }
   .barra-acciones { margin-left: auto; }
@@ -971,6 +1049,12 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
   .horarios { grid-template-columns: minmax(0, 1fr); }
   .horario { flex-wrap: wrap; }
   .empujar { margin-left: 0; }
+}
+
+@media (max-width: 640px) {
+  .grafico-eje { min-width: 44px; font-size: 0.66rem; }
+  .barras-h li { grid-template-columns: 1fr; gap: 3px; }
+  .ventas-controles { flex-wrap: wrap; }
 }
 
 @media (max-width: 480px) {

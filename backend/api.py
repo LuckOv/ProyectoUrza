@@ -93,6 +93,12 @@ def vaciar_carrito(thread_id: str):
 
 # --- cartas ------------------------------------------------------------------
 
+@app.get("/catalogo")
+def catalogo():
+    """Todas las cartas a la venta (con stock y precio), para la lista con buscador."""
+    return {"items": inventario.catalogo()}
+
+
 @app.get("/carta")
 def carta(nombre: str):
     encontrada = cartas.buscar(nombre)
@@ -133,6 +139,7 @@ def chat(consulta: Consulta):
     vacia = {
         "texto": "", "herramientas": [], "carta": None,
         "carrito": tienda.ver_carrito(consulta.thread_id), "pedido": None,
+        "mazo": None, "catalogo": False,
     }
 
     try:
@@ -164,6 +171,8 @@ def chat(consulta: Consulta):
     args_por_id = {}
     ultimo_nombre = None
     pedido = None
+    mazo = None
+    catalogo_pedido = False
 
     for m in tramo:
         for llamada in getattr(m, "tool_calls", None) or []:
@@ -182,6 +191,12 @@ def chat(consulta: Consulta):
             # Si en este turno se cerró la compra, el front muestra el comprobante.
             if nombre == "confirmar_compra" and resultado.startswith("Pedido #"):
                 pedido = resultado
+            # Sugerencias de mazo: la herramienta devuelve las cartas como
+            # "artifact" (datos aparte del texto) para dibujar el abanico.
+            if nombre == "sugerir_cartas_mazo" and getattr(m, "artifact", None):
+                mazo = [{"nombre": c["nombre"], "imagen": c.get("imagen")} for c in m.artifact]
+            if nombre == "listar_cartas_disponibles":
+                catalogo_pedido = True
 
     texto = str(tramo[-1].content).strip() if tramo else ""
     if not texto:
@@ -195,5 +210,7 @@ def chat(consulta: Consulta):
         # para que el front actualice el ícono sin otro pedido.
         "carrito": tienda.ver_carrito(consulta.thread_id),
         "pedido": pedido,
+        "mazo": mazo,
+        "catalogo": catalogo_pedido,
         "error": "",
     }

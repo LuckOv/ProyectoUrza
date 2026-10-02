@@ -14,6 +14,7 @@ si sube el dólar se actualizan todos los precios solos.
 """
 
 import csv
+import os
 import re
 import threading
 import time
@@ -75,6 +76,103 @@ def valor_dolar() -> float:
     return float(dolar().get("valor") or 0)
 
 
+# --- precio sugerido para cartas graduadas ------------------------------------
+#
+# Scryfall sólo da el precio de la carta sin graduar. Para PSA hay dos fuentes:
+#   1. PriceCharting (pricecharting.com/api-documentation), si hay un token en
+#      PRICECHARTING_TOKEN (backend/.env). Es una API paga. Trae PSA 10, 9.5, 9,
+#      8 y 7; para el resto de los grados se cae al punto 2.
+#   2. Multiplicador por grado (Configuración) sobre el precio de Scryfall.
+
+# Campo de PriceCharting para cada grado (precios en centavos de dólar).
+CAMPOS_PRICECHARTING = {
+    "Sin graduar": "loose-price",
+    "PSA 10": "manual-only-price",
+    "PSA 9": "graded-price",
+    "PSA 8": "new-price",
+    "PSA 7": "cib-price",
+}
+_cache_pc = {}
+
+
+def _pricecharting(nombre: str, set_nombre: str | None):
+    """Precios de PriceCharting para una carta, o None si no hay token o falla."""
+    token = os.getenv("PRICECHARTING_TOKEN")
+    if not token:
+        return None
+    clave = (nombre, set_nombre)
+    if clave in _cache_pc:
+        return _cache_pc[clave]
+    try:
+        r = requests.get(
+            "https://www.pricecharting.com/api/products",
+            params={"t": token, "q": f"{nombre} {set_nombre or ''}".strip()}, timeout=8,
+        )
+        productos = r.json().get("products") or []
+        if not productos:
+            _cache_pc[clave] = None
+            return None
+        r = requests.get(
+            "https://www.pricecharting.com/api/product",
+            params={"t": token, "id": productos[0]["id"]}, timeout=8,
+        )
+        datos = r.json()
+        _cache_pc[clave] = datos if datos.get("status") == "success" else None
+    except Exception:
+        return None   # sin red o respuesta inesperada: se usa el multiplicador
+    return _cache_pc[clave]
+
+
+def precio_sugerido(grado: str, precio_base_usd: float | None,
+                    nombre: str = "", set_nombre: str | None = None) -> dict:
+    """Precio en dólares sugerido para una carta en un grado dado.
+
+    Devuelve {"precio_usd", "fuente", "detalle"}; precio_usd puede ser None si
+    no hay de dónde sacarlo.
+    """
+    pc = _pricecharting(nombre, set_nombre) if nombre else None
+    campo = CAMPOS_PRICECHARTING.get(grado)
+    if pc and campo and pc.get(campo):
+        return {
+            "precio_usd": round(pc[campo] / 100, 2),
+            "fuente": "pricecharting",
+            "detalle": f"PriceCharting · {pc.get('product-name', nombre)}",
+        }
+
+    if precio_base_usd is None:
+        return {"precio_usd": None, "fuente": "ninguna",
+                "detalle": "Scryfall no tiene precio de esta carta: cargalo a mano."}
+    if grado == "Sin graduar":
+        return {"precio_usd": round(precio_base_usd, 2), "fuente": "scryfall",
+                "detalle": "Precio de mercado de Scryfall (sin graduar)."}
+
+    factor = float((base.config("multiplicadores") or {}).get(grado, 1.0))
+    return {
+        "precio_usd": round(precio_base_usd * factor, 2),
+        "fuente": "multiplicador",
+        "detalle": (f"{grado} = ×{factor:g} sobre US$ {precio_base_usd:.2f} (sin graduar, Scryfall)."
+                    .replace(".", ",").rstrip(",") + "."),
+    }
+
+
+def guardar_multiplicadores(valores: dict) -> dict:
+    limpio = {}
+    for grado in GRADOS[1:]:
+        if grado not in valores:
+            continue
+        v = float(valores[grado])
+        if not 0.1 <= v <= 100:
+            raise ValueError(f"El multiplicador de {grado} tiene que estar entre 0,1 y 100.")
+        limpio[grado] = round(v, 2)
+    actual = {**(base.config("multiplicadores") or {}), **limpio}
+    base.guardar_config("multiplicadores", actual)
+    base.registrar_movimiento(
+        "config", "Multiplicadores de precio por grado actualizados",
+        ", ".join(f"{g} ×{actual[g]:g}" for g in GRADOS[1:4] if g in actual) + "…",
+    )
+    return actual
+
+
 # --- descuentos --------------------------------------------------------------
 
 def _descuentos_por_carta(con) -> dict:
@@ -102,12 +200,25 @@ def _validar_porcentaje(p: float) -> float:
 
 
 def guardar_descuento_general(porcentaje: float):
-    base.guardar_config("descuento_general", _validar_porcentaje(porcentaje))
+    p = _validar_porcentaje(porcentaje)
+    anterior = float(base.config("descuento_general") or 0)
+    base.guardar_config("descuento_general", p)
+    if p != anterior:
+        base.registrar_movimiento(
+            "config", "Descuento general actualizado", f"{anterior:g}% → {p:g}% en todo el inventario"
+        )
 
 
 def poner_descuento(inventario_ids: list, porcentaje: float):
     p = _validar_porcentaje(porcentaje)
     with base.conectar() as con:
+        nombres = [
+            f"{f['nombre']} ({f['grado']})"
+            for f in con.execute(
+                f"SELECT nombre, grado FROM inventario WHERE id IN ({','.join('?' * len(inventario_ids))})",
+                list(inventario_ids),
+            ).fetchall()
+        ] if inventario_ids else []
         for item_id in inventario_ids:
             if p == 0:
                 con.execute("DELETE FROM descuentos WHERE inventario_id = ?", (item_id,))
@@ -117,11 +228,28 @@ def poner_descuento(inventario_ids: list, porcentaje: float):
                     "ON CONFLICT(inventario_id) DO UPDATE SET porcentaje = excluded.porcentaje",
                     (item_id, p, base.ahora_iso()),
                 )
+        if nombres:
+            base.registrar_movimiento(
+                "config",
+                f"Descuento del {p:g}% aplicado" if p else "Descuento quitado",
+                ", ".join(nombres[:6]) + (f" y {len(nombres) - 6} más" if len(nombres) > 6 else ""),
+                con=con,
+            )
 
 
 def quitar_descuento(descuento_id: int):
     with base.conectar() as con:
+        fila = con.execute(
+            """SELECT d.porcentaje, i.nombre, i.grado FROM descuentos d
+                 JOIN inventario i ON i.id = d.inventario_id WHERE d.id = ?""",
+            (descuento_id,),
+        ).fetchone()
         con.execute("DELETE FROM descuentos WHERE id = ?", (descuento_id,))
+        if fila:
+            base.registrar_movimiento(
+                "config", "Descuento quitado",
+                f"{fila['nombre']} ({fila['grado']}) · era {fila['porcentaje']:g}%", con=con,
+            )
 
 
 # --- lectura -----------------------------------------------------------------
@@ -259,6 +387,72 @@ def alta(scryfall_id: str, grado: str = "Sin graduar", cantidad: int = 1,
             f"{imp['set_nombre']} · {grado}", cantidad, con=con,
         )
     return obtener(item_id)
+
+
+def agregar_variante(item_id: int, grado: str, cantidad: int = 1,
+                     precio_usd: float | None = None) -> dict:
+    """Suma la misma carta (misma impresión) con otro grado: ej. ya tenés el
+    Blind Seer sin graduar y entra uno PSA 10.
+
+    Copia los datos de la carta de la fila existente, así no hace falta volver
+    a buscarla en Scryfall. Si ese grado ya existía, suma las unidades.
+    """
+    grado = _validar_grado(grado)
+    if cantidad < 1:
+        raise ValueError("La cantidad tiene que ser al menos 1.")
+    if precio_usd is not None and precio_usd < 0:
+        raise ValueError("El precio no puede ser negativo.")
+    origen = obtener(item_id)
+    if not origen:
+        raise ValueError("Esa carta ya no está en el inventario.")
+
+    with base.conectar() as con:
+        # Misma impresión: por scryfall_id si lo hay; si no (filas del CSV
+        # viejo sin completar), por nombre + set.
+        if origen["scryfall_id"]:
+            existente = con.execute(
+                "SELECT id, cantidad FROM inventario WHERE scryfall_id = ? AND grado = ?",
+                (origen["scryfall_id"], grado),
+            ).fetchone()
+        else:
+            existente = con.execute(
+                """SELECT id, cantidad FROM inventario
+                    WHERE nombre = ? AND IFNULL(set_codigo,'') = IFNULL(?,'') AND grado = ?""",
+                (origen["nombre"], origen["set_codigo"], grado),
+            ).fetchone()
+
+        if existente:
+            nuevo_id = existente["id"]
+            con.execute(
+                "UPDATE inventario SET cantidad = ?, precio_usd = COALESCE(?, precio_usd), actualizado = ? WHERE id = ?",
+                (existente["cantidad"] + cantidad, precio_usd, base.ahora_iso(), nuevo_id),
+            )
+        else:
+            cur = con.execute(
+                """INSERT INTO inventario (nombre, set_codigo, set_nombre, numero, rareza, imagen,
+                                           scryfall_id, grado, precio_usd, cantidad, legal_standard,
+                                           creado, actualizado)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (origen["nombre"], origen["set_codigo"], origen["set_nombre"], origen["numero"],
+                 origen["rareza"], origen["imagen"], origen["scryfall_id"], grado,
+                 precio_usd if precio_usd is not None else origen["precio_usd"], cantidad,
+                 int(origen["legal_standard"]), base.ahora_iso(), base.ahora_iso()),
+            )
+            nuevo_id = cur.lastrowid
+        base.registrar_movimiento(
+            "entrada", f"Nuevo grado de {origen['nombre']}",
+            f"{origen['set_nombre'] or 'sin set'} · {grado}", cantidad, con=con,
+        )
+    return obtener(nuevo_id)
+
+
+def catalogo() -> list:
+    """Lo que el jugador puede comprar: todas las variantes con stock y precio."""
+    return [
+        {k: i[k] for k in ("id", "nombre", "set_nombre", "grado", "precio_ars", "cantidad", "imagen", "descuento")}
+        for i in listar()
+        if i["cantidad"] > 0 and i["precio_ars"] is not None
+    ]
 
 
 def editar(item_id: int, grado: str | None = None, precio_usd: float | None = None,

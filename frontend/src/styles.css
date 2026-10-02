@@ -405,18 +405,135 @@ body {
 }
 .carta3d-agregar:disabled { opacity: 0.55; }
 
-.carta3d-variante {
-  display: block;
-  max-width: 100%;
-  margin: 4px 0 2px;
-  padding: 6px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(212, 175, 110, 0.4);
-  background: rgba(28, 15, 8, 0.8);
-  color: var(--crema);
-  font-family: inherit;
-  font-size: 0.84rem;
+/* --- varias versiones de la misma carta (Sin graduar, PSA 9, PSA 10...) --- */
+
+.carta3d-grupo { align-self: flex-start; max-width: 100%; margin: 10px 0 14px; }
+.carta3d-variantes {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  padding: 12px 4px 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
+.carta3d-variante {
+  flex: 0 0 auto;
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+.carta3d-variante .carta3d-marco { width: 132px; }
+.carta3d-variante.agotada .carta3d-marco { filter: grayscale(0.85) brightness(0.75); }
+.carta3d-variante .carta3d-agregar { padding: 7px 12px; font-size: 0.84rem; }
+.carta3d-grado {
+  margin-top: 8px;
+  padding: 1px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 110, 0.45);
+  background: rgba(28, 15, 8, 0.75);
+  color: var(--crema-apagada);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.carta3d-grado.psa { background: var(--oro); border-color: var(--oro); color: #2a1206; }
+.carta3d-precio { font-size: 1.05rem; color: var(--crema); text-shadow: 0 1px 6px rgba(20, 10, 4, 0.8); }
+.carta3d-desc { font-size: 0.76rem; color: #ffb59c; }
+.carta3d-variante .carta3d-stock { margin: 0; font-size: 0.76rem; line-height: 1.3; }
+
+/* --- abanico de cartas sugeridas para un mazo --- */
+
+.abanico {
+  --ancho: 112px;
+  position: relative;
+  align-self: flex-start;
+  width: min(100%, calc(var(--ancho) * 0.42 * var(--cartas) + var(--ancho) * 1.3));
+  height: calc(var(--ancho) * 1.4 + 70px);
+  margin: 10px 0 18px;
+}
+.abanico-carta {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  width: var(--ancho);
+  aspect-ratio: 5 / 7;
+  margin-left: calc(var(--ancho) / -2);
+  border-radius: 7px;
+  box-shadow: 0 6px 14px rgba(12, 6, 2, 0.55);
+  transform-origin: 50% 120%;
+  transform: translateX(calc(var(--pos) * var(--ancho) * 0.42)) translateY(var(--caida)) rotate(var(--giro));
+  transition: transform 0.22s ease-out, box-shadow 0.22s ease-out;
+  outline: none;
+}
+.abanico-carta.activa {
+  transform: translateX(calc(var(--pos) * var(--ancho) * 0.42)) translateY(calc(var(--caida) - 26px)) rotate(var(--giro)) scale(1.12);
+  box-shadow: 0 18px 34px rgba(12, 6, 2, 0.7), 0 0 0 2px var(--oro);
+}
+.abanico-carta img, .abanico-sinimagen {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 7px;
+}
+.abanico-sinimagen {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  text-align: center;
+  background: rgba(28, 15, 8, 0.9);
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  font-family: var(--titulo);
+  font-size: 0.8rem;
+  color: var(--crema);
+}
+.abanico-nombre {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) rotate(calc(var(--giro) * -1));
+  padding: 4px 11px;
+  border-radius: 12px;
+  background: rgba(28, 15, 8, 0.95);
+  border: 1px solid rgba(212, 175, 110, 0.55);
+  color: var(--crema);
+  font-family: var(--titulo);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* --- catálogo --- */
+
+.ver-catalogo {
+  align-self: flex-start;
+  margin: 2px 0 10px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(212, 175, 110, 0.5);
+  background: rgba(28, 15, 8, 0.82);
+  color: var(--crema);
+  font-family: var(--titulo);
+  font-size: 0.95rem;
+  cursor: var(--flecha);
+  cursor: var(--flecha-hd);
+}
+.ver-catalogo:hover { background: var(--rivet); color: #2a1206; border-color: var(--rivet); }
+.catalogo-buscar { padding: 12px 20px 0; }
+.catalogo-buscar input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #6b4a2e;
+  border-radius: 6px;
+  background: #f7eedc;
+  color: #2e211a;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+.catalogo-buscar input:focus { outline: none; box-shadow: 0 0 0 2px #8c6a3f; }
+.catalogo-cuenta { margin: 8px 20px 0; font-size: 0.82rem; color: #6b5335; }
 
 /* --- paneles --- */
 
@@ -548,5 +665,8 @@ body {
 @media (max-width: 640px) {
   .carta3d { flex-direction: column; align-items: flex-start; gap: 10px; }
   .carta3d-marco { width: 140px; }
+  .abanico { --ancho: 76px; }
+  .carta3d-variante { width: 112px; }
+  .carta3d-variante .carta3d-marco { width: 104px; }
   .barra-superior { top: 10px; right: 14px; }
 }

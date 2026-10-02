@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { dolares, numero, pesos } from "../formato.js";
 import AgregarCarta from "./AgregarCarta.jsx";
 import * as api from "./api.js";
-import { Confirmar, Etiqueta, EtiquetaStock, Icono, Modal, useAviso } from "./comunes.jsx";
+import {
+  Confirmar, Etiqueta, EtiquetaStock, Icono, Modal, NotaSugerencia, useAviso, usePrecioSugerido,
+} from "./comunes.jsx";
 
 const RAREZA = { common: "Común", uncommon: "Infrecuente", rare: "Rara", mythic: "Mítica", special: "Especial", bonus: "Bonus" };
 
@@ -93,6 +95,101 @@ function EditarCarta({ carta, grados, dolar, onCerrar, onGuardado }) {
   );
 }
 
+/* La misma carta (misma impresión) con otro grado: entra un PSA 10 de algo
+   que ya tenías sin graduar, o al revés. Copia los datos de la carta, así no
+   hay que volver a buscarla en Scryfall. */
+function OtroGrado({ carta, todas, grados, dolar, onCerrar, onGuardado }) {
+  // Grados que ya existen de esta misma impresión, para mostrarlos y no ofrecerlos primero.
+  const hermanas = todas.filter((i) =>
+    carta.scryfall_id
+      ? i.scryfall_id === carta.scryfall_id
+      : i.nombre === carta.nombre && i.set_codigo === carta.set_codigo);
+  const usados = new Set(hermanas.map((h) => h.grado));
+  const libres = grados.filter((g) => !usados.has(g));
+
+  const [grado, setGrado] = useState(libres[0] || grados[0]);
+  const [cantidad, setCantidad] = useState(1);
+  const [precio, setPrecio] = useState(carta.precio_usd ?? "");
+  const [error, setError] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const precioNum = precio === "" ? null : Number(precio);
+  const yaExiste = usados.has(grado);
+  const sugerencia = usePrecioSugerido(grado, { item_id: carta.id }, setPrecio);
+
+  async function guardar() {
+    setError("");
+    setOcupado(true);
+    try {
+      onGuardado(await api.nuevaVariante(carta.id, { grado, cantidad: Number(cantidad), precio_usd: precioNum }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <Modal
+      titulo={`Otro grado de ${carta.nombre}`}
+      subtitulo={`${carta.set_nombre || "sin set"} #${carta.numero || "—"} · misma impresión, otro PSA`}
+      onCerrar={onCerrar}
+      pie={
+        <>
+          <button className="boton" onClick={onCerrar}>Cancelar</button>
+          <button className="boton primario" onClick={guardar} disabled={ocupado}>
+            {ocupado ? "Guardando…" : yaExiste ? "Sumar unidades" : "Agregar grado"}
+          </button>
+        </>
+      }
+    >
+      <div className="edicion">
+        {carta.imagen ? <img src={carta.imagen} alt="" className="edicion-img" /> : <div className="edicion-img vacia" />}
+        <div className="formulario">
+          <div className="campo">
+            <span>Ya tenés de esta carta</span>
+            <div className="grados-existentes">
+              {hermanas.map((h) => (
+                <Etiqueta key={h.id} tono={h.grado === "Sin graduar" ? "neutro" : "grado"}>
+                  {h.grado} · {h.cantidad} u. · {pesos(h.precio_ars)}
+                </Etiqueta>
+              ))}
+            </div>
+          </div>
+          <label className="campo">
+            <span>Nuevo grado</span>
+            <select value={grado} onChange={(e) => setGrado(e.target.value)}>
+              {libres.map((g) => <option key={g}>{g}</option>)}
+              {libres.length > 0 && usados.size > 0 && <option disabled>──────────</option>}
+              {grados.filter((g) => usados.has(g)).map((g) => <option key={g} value={g}>{g} (ya existe: suma unidades)</option>)}
+            </select>
+          </label>
+          <div className="fila-campos">
+            <label className="campo">
+              <span>Cantidad</span>
+              <div className="contador">
+                <button type="button" onClick={() => setCantidad((c) => Math.max(1, Number(c) - 1))}>−</button>
+                <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+                <button type="button" onClick={() => setCantidad((c) => Number(c) + 1)}>+</button>
+              </div>
+            </label>
+            <label className="campo">
+              <span>Precio en dólares</span>
+              <input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} />
+            </label>
+          </div>
+          <NotaSugerencia sugerencia={sugerencia} precio={precio} onUsar={() => setPrecio(sugerencia.precio_usd)} />
+          <small className="ayuda">
+            {precioNum != null
+              ? `Se vende a ${pesos(Math.round(precioNum * dolar))} antes de descuentos.`
+              : "Sin precio el chat no la puede vender."}
+          </small>
+          {error && <p className="error-texto">{error}</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Inventario() {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
@@ -102,7 +199,7 @@ export default function Inventario() {
   const [grado, setGrado] = useState("");
   const [orden, setOrden] = useState("nombre");
   const [elegidas, setElegidas] = useState(new Set());
-  const [modal, setModal] = useState(null);     // "agregar" | "editar" | "borrar"
+  const [modal, setModal] = useState(null);     // "agregar" | "editar" | "grado" | "borrar"
   const [avisar, aviso] = useAviso();
 
   async function cargar() {
@@ -212,6 +309,10 @@ export default function Inventario() {
                   title={seleccion.length > 1 ? "Elegí una sola carta para editar" : undefined}>
             <Icono nombre="editar" /> Editar
           </button>
+          <button className="boton" disabled={seleccion.length !== 1} onClick={() => setModal("grado")}
+                  title="La misma carta con otro grado (PSA)">
+            <Icono nombre="mas" /> Otro PSA
+          </button>
           <button className="boton peligro-suave" disabled={!seleccion.length} onClick={() => setModal("borrar")}>
             <Icono nombre="borrar" /> Borrar
           </button>
@@ -274,6 +375,7 @@ export default function Inventario() {
       {modal === "agregar" && (
         <AgregarCarta
           grados={datos?.grados || ["Sin graduar"]}
+          inventario={datos?.items || []}
           onCerrar={() => setModal(null)}
           onAgregada={(c, seguir) => {
             avisar(`${c.nombre} (${c.grado}) quedó con ${c.cantidad} en stock.`);
@@ -290,6 +392,22 @@ export default function Inventario() {
           dolar={datos.dolar}
           onCerrar={() => setModal(null)}
           onGuardado={(c) => { avisar(`Guardé los cambios de ${c.nombre}.`); setModal(null); cargar(); }}
+        />
+      )}
+
+      {modal === "grado" && seleccion[0] && (
+        <OtroGrado
+          carta={seleccion[0]}
+          todas={datos.items}
+          grados={datos.grados}
+          dolar={datos.dolar}
+          onCerrar={() => setModal(null)}
+          onGuardado={(c) => {
+            avisar(`${c.nombre} ${c.grado}: ${c.cantidad} en stock.`);
+            setModal(null);
+            setElegidas(new Set([c.id]));
+            cargar();
+          }}
         />
       )}
 

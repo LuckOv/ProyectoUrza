@@ -46,6 +46,13 @@ CONFIG_INICIAL = {
     "dolar": {"modo": "auto", "casa": "blue", "valor": 1000.0, "actualizado": None},
     "stock_bajo": 2,
     "descuento_general": 0.0,
+    # Cuánto vale una carta graduada respecto de la misma sin graduar, para
+    # sugerir el precio cuando no hay token de PriceCharting. Son valores de
+    # arranque: el vendedor los ajusta en Configuración.
+    "multiplicadores": {
+        "PSA 10": 3.0, "PSA 9": 1.8, "PSA 8": 1.3, "PSA 7": 1.1, "PSA 6": 1.0,
+        "PSA 5": 0.9, "PSA 4": 0.8, "PSA 3": 0.7, "PSA 2": 0.6, "PSA 1": 0.5,
+    },
 }
 
 
@@ -226,9 +233,26 @@ def registrar_movimiento(tipo: str, titulo: str, detalle: str = "", unidades: in
             c.execute(sql, datos)
 
 
-def movimientos(limite: int = 20) -> list:
+def movimientos(limite: int = 20, q: str | None = None, tipo: str | None = None,
+                antes_de: int | None = None) -> list:
+    """Registro de actividad, del más nuevo al más viejo.
+
+    `q` busca en título y detalle; `tipo` filtra (o lista separada por comas);
+    `antes_de` es el id desde el cual seguir (para "cargar más").
+    """
+    sql, params = "SELECT * FROM movimientos WHERE 1=1", []
+    if q:
+        sql += " AND (titulo LIKE ? OR detalle LIKE ?)"
+        params += [f"%{q}%", f"%{q}%"]
+    if tipo:
+        tipos = [t.strip() for t in tipo.split(",") if t.strip()]
+        sql += f" AND tipo IN ({','.join('?' * len(tipos))})"
+        params += tipos
+    if antes_de:
+        sql += " AND id < ?"
+        params.append(antes_de)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limite)
     with conectar() as con:
-        filas = con.execute(
-            "SELECT * FROM movimientos ORDER BY id DESC LIMIT ?", (limite,)
-        ).fetchall()
+        filas = con.execute(sql, params).fetchall()
     return [dict(f) for f in filas]

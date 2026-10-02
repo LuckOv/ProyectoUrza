@@ -2,22 +2,15 @@ import { useRef, useState } from "react";
 
 import { dolares, pesos } from "./formato.js";
 
-/* La carta se inclina siguiendo el puntero y se levanta al pasarle por encima.
-   El efecto es una rotación en dos ejes proporcional a qué tan lejos del centro
-   está el mouse, más un brillo que se desplaza como el de una carta foil.
-
-   Si la tienda tiene la carta en varias variantes (set y grado, ej. "Sin
-   graduar" o "PSA 10"), aparece un selector y el botón agrega la elegida. */
-export default function Carta3D({ carta, onAgregar, agregando }) {
+/* Imagen de carta que se inclina siguiendo el puntero y se levanta al pasarle
+   por encima. El efecto es una rotación en dos ejes proporcional a qué tan
+   lejos del centro está el mouse, más un brillo que se desplaza como el de una
+   carta foil. La usan la carta del chat y sus variantes. */
+export function CartaInclinable({ imagen, nombre, ancho }) {
   const marcoRef = useRef(null);
   const [giro, setGiro] = useState({ x: 0, y: 0 });
   const [luz, setLuz] = useState({ x: 50, y: 50 });
   const [encima, setEncima] = useState(false);
-
-  const variantes = carta.variantes || [];
-  const conStock = variantes.filter((v) => v.cantidad > 0);
-  const [elegidaId, setElegidaId] = useState(conStock[0]?.id ?? null);
-  const elegida = variantes.find((v) => v.id === elegidaId) || conStock[0] || null;
 
   const mover = (e) => {
     const caja = marcoRef.current.getBoundingClientRect();
@@ -35,73 +28,102 @@ export default function Carta3D({ carta, onAgregar, agregando }) {
     setLuz({ x: 50, y: 50 });
   };
 
-  const imagen = elegida?.imagen || carta.imagen;
+  return (
+    <div
+      ref={marcoRef}
+      className={`carta3d-marco${encima ? " encima" : ""}`}
+      style={ancho ? { width: ancho } : undefined}
+      onMouseEnter={() => setEncima(true)}
+      onMouseMove={mover}
+      onMouseLeave={salir}
+    >
+      <div
+        className="carta3d-cuerpo"
+        style={{ transform: `rotateX(${giro.x}deg) rotateY(${giro.y}deg)` }}
+      >
+        {imagen ? (
+          <img src={imagen} alt={nombre} draggable="false" />
+        ) : (
+          <div className="carta3d-sinimagen">{nombre}</div>
+        )}
+        <div
+          className="carta3d-brillo"
+          style={{ background: `radial-gradient(circle at ${luz.x}% ${luz.y}%, rgba(255,255,255,.45), rgba(255,255,255,0) 55%)` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BotonAgregar({ onClick, hay, agregando }) {
+  return (
+    <button className="carta3d-agregar" onClick={onClick} disabled={!hay || agregando}>
+      {agregando ? "Agregando…" : hay ? "Agregar al carrito" : "Sin stock"}
+    </button>
+  );
+}
+
+/* La carta de la que habló Urza. Si la tienda la tiene en varias versiones
+   (mismo nombre, distinto grado o set: "Sin graduar", "PSA 9", "PSA 10"...),
+   se muestran todas, una al lado de la otra, cada una con su precio abajo. */
+export default function Carta3D({ carta, onAgregar, agregando }) {
+  const variantes = carta.variantes || [];
+
+  // Varias versiones en la tienda: una carta por cada una.
+  if (variantes.length > 1) {
+    return (
+      <div className="carta3d-grupo">
+        <p className="carta3d-nombre">{carta.nombre}</p>
+        <p className="carta3d-edicion">{variantes.length} versiones en la tienda</p>
+        <div className="carta3d-variantes">
+          {variantes.map((v) => {
+            const hay = v.cantidad > 0;
+            return (
+              <div key={v.id} className={`carta3d-variante${hay ? "" : " agotada"}`}>
+                <CartaInclinable imagen={v.imagen || carta.imagen} nombre={carta.nombre} />
+                <span className={`carta3d-grado${v.grado === "Sin graduar" ? "" : " psa"}`}>{v.grado}</span>
+                <strong className="carta3d-precio">{pesos(v.precio_ars)}</strong>
+                {v.descuento > 0 && <span className="carta3d-desc">−{v.descuento}%</span>}
+                <span className="carta3d-stock">
+                  {hay ? `${v.cantidad} en stock` : "Sin stock"}{v.set_nombre ? ` · ${v.set_nombre}` : ""}
+                </span>
+                <BotonAgregar
+                  hay={hay && v.precio_ars != null}
+                  agregando={agregando}
+                  onClick={() => onAgregar(carta, v)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Una sola versión (o la tienda no la tiene).
+  const v = variantes[0] || null;
+  const hay = Boolean(v && v.cantidad > 0);
   let stock;
-  if (elegida) stock = `${elegida.cantidad} en stock · ${pesos(elegida.precio_ars)}`;
-  else if (variantes.length) stock = "Sin stock";
+  if (v) stock = hay ? `${v.cantidad} en stock · ${pesos(v.precio_ars)}` : "Sin stock";
   else stock = "No está en la tienda";
-  const referencia = !variantes.length && carta.precio_mercado_usd
+  const referencia = !v && carta.precio_mercado_usd
     ? `Mercado: ${dolares(Number(carta.precio_mercado_usd))}`
     : null;
 
   return (
     <div className="carta3d">
-      <div
-        ref={marcoRef}
-        className={`carta3d-marco${encima ? " encima" : ""}`}
-        onMouseEnter={() => setEncima(true)}
-        onMouseMove={mover}
-        onMouseLeave={salir}
-      >
-        <div
-          className="carta3d-cuerpo"
-          style={{ transform: `rotateX(${giro.x}deg) rotateY(${giro.y}deg)` }}
-        >
-          {imagen ? (
-            <img src={imagen} alt={carta.nombre} draggable="false" />
-          ) : (
-            <div className="carta3d-sinimagen">{carta.nombre}</div>
-          )}
-          <div
-            className="carta3d-brillo"
-            style={{ background: `radial-gradient(circle at ${luz.x}% ${luz.y}%, rgba(255,255,255,.45), rgba(255,255,255,0) 55%)` }}
-          />
-        </div>
-      </div>
-
+      <CartaInclinable imagen={v?.imagen || carta.imagen} nombre={carta.nombre} />
       <div className="carta3d-datos">
         <p className="carta3d-nombre">{carta.nombre}</p>
-        <p className="carta3d-edicion">
-          {elegida ? `${elegida.set_nombre || ""} · ${elegida.grado}` : carta.edicion}
-        </p>
+        <p className="carta3d-edicion">{v ? `${v.set_nombre || ""} · ${v.grado}` : carta.edicion}</p>
         <p className="carta3d-stock">
           {stock}
-          {elegida?.descuento > 0 && ` (−${elegida.descuento}%)`}
+          {v?.descuento > 0 && ` (−${v.descuento}%)`}
           {referencia && ` · ${referencia}`}
         </p>
-
-        {conStock.length > 1 && (
-          <select
-            className="carta3d-variante"
-            value={elegida?.id ?? ""}
-            onChange={(e) => setElegidaId(Number(e.target.value))}
-            aria-label="Elegí la versión"
-          >
-            {conStock.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.set_nombre} · {v.grado} · {pesos(v.precio_ars)}
-              </option>
-            ))}
-          </select>
+        {v && (
+          <BotonAgregar hay={hay && v.precio_ars != null} agregando={agregando} onClick={() => onAgregar(carta, v)} />
         )}
-
-        <button
-          className="carta3d-agregar"
-          onClick={() => onAgregar(carta, elegida)}
-          disabled={!elegida || agregando}
-        >
-          {agregando ? "Agregando…" : "Agregar al carrito"}
-        </button>
       </div>
     </div>
   );

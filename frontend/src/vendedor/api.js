@@ -45,6 +45,9 @@ export const entrar = (clave) => pedir("/vendedor/entrar", { metodo: "POST", cue
 export const inventario = (filtros = {}) => pedir(`/vendedor/inventario${qs(filtros)}`);
 export const altaCarta = (datos) => pedir("/vendedor/inventario", { metodo: "POST", cuerpo: datos });
 export const editarCarta = (id, datos) => pedir(`/vendedor/inventario/${id}`, { metodo: "PATCH", cuerpo: datos });
+export const precioSugerido = (params) => pedir(`/vendedor/precio-sugerido${qs(params)}`);
+export const nuevaVariante = (id, datos) =>
+  pedir(`/vendedor/inventario/${id}/variante`, { metodo: "POST", cuerpo: datos });
 export const borrarCartas = (ids) => pedir("/vendedor/inventario/borrar", { metodo: "POST", cuerpo: { ids } });
 
 export const autocompletar = (q) => pedir(`/vendedor/scryfall/autocompletar${qs({ q })}`);
@@ -69,6 +72,7 @@ export async function exportarHistorial(filtros = {}) {
 }
 
 export const dashboard = () => pedir("/vendedor/dashboard");
+export const actividad = (filtros = {}) => pedir(`/vendedor/actividad${qs(filtros)}`);
 
 export const config = () => pedir("/vendedor/config");
 export const guardarConfig = (datos) => pedir("/vendedor/config", { metodo: "PUT", cuerpo: datos });

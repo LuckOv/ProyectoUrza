@@ -34,3 +34,5 @@ export const vaciarCarrito = (threadId) =>
 
 export const preguntar = (thread_id, texto) =>
   pedir("/chat", { metodo: "POST", cuerpo: { thread_id, texto } });
+
+export const catalogo = () => pedir("/catalogo");

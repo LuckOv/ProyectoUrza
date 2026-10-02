@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
+import Abanico from "./Abanico.jsx";
 import Bolitas from "./Bolitas.jsx";
+import Catalogo from "./Catalogo.jsx";
 import Carrito from "./Carrito.jsx";
 import Carta3D from "./Carta3D.jsx";
 import * as api from "./api.js";
@@ -9,6 +11,8 @@ const SUGERENCIAS = [
   { texto: "¿Tenés Cavern of Souls?", icono: "stock" },
   { texto: "Precio de Llanowar Elves", icono: "precio" },
   { texto: "Quiero comprar Heartfire Hero", icono: "compra" },
+  { texto: "¿Qué cartas tenés?", icono: "stock" },
+  { texto: "Ayudame a armar un mazo verde de elfos", icono: "precio" },
 ];
 
 function Icono({ tipo }) {
@@ -70,7 +74,7 @@ export default function App() {
   const [verTrazas, setVerTrazas] = useState(false);
 
   const [items, setItems] = useState([]);
-  const [panel, setPanel] = useState(null);        // "carrito" | null
+  const [panel, setPanel] = useState(null);        // "carrito" | "catalogo" | null
   const [agregando, setAgregando] = useState(null);
   const [aviso, setAviso] = useState("");
   const [latido, setLatido] = useState(false);     // animación del ícono al sumar
@@ -141,6 +145,8 @@ export default function App() {
               herramientas: data.herramientas,
               carta: data.carta,
               pedido: data.pedido,
+              mazo: data.mazo,
+              catalogo: data.catalogo,
             },
       ]);
       // El agente pudo haber agregado, sacado o cerrado la compra: el
@@ -202,6 +208,12 @@ export default function App() {
                     onAgregar={agregarCarta}
                     agregando={agregando === m.carta.nombre}
                   />
+                )}
+                {m.mazo?.length > 0 && <Abanico cartas={m.mazo} />}
+                {m.catalogo && (
+                  <button className="ver-catalogo" onClick={() => setPanel("catalogo")}>
+                    Ver todas las cartas
+                  </button>
                 )}
                 {m.pedido && (
                   <div className="comprobante">
@@ -270,6 +282,7 @@ export default function App() {
 
       {aviso && <p className="aviso" role="status">{aviso}</p>}
 
+      {panel === "catalogo" && <Catalogo onCerrar={() => setPanel(null)} />}
       {panel === "carrito" && (
         <Carrito
           items={items}

@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { dolares, pesos } from "../formato.js";
 import * as api from "./api.js";
-import { Etiqueta, Icono, Modal } from "./comunes.jsx";
+import { Etiqueta, Icono, Modal, NotaSugerencia, usePrecioSugerido } from "./comunes.jsx";
 
 /* Alta de una carta en tres pasos, todo contra Scryfall:
    1. escribís el nombre y aparece la lista de Scryfall (autocompletado),
    2. elegís la impresión exacta (set, número, arte),
    3. cargás grado, cantidad y precio (viene sugerido el de Scryfall). */
-export default function AgregarCarta({ grados, onCerrar, onAgregada }) {
+export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgregada }) {
   const [texto, setTexto] = useState("");
   const [sugerencias, setSugerencias] = useState([]);
   const [buscando, setBuscando] = useState(false);
@@ -26,6 +26,9 @@ export default function AgregarCarta({ grados, onCerrar, onAgregada }) {
   const [error, setError] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const pedidoActual = useRef(0);
+  // El precio se sugiere según el grado: sin graduar = Scryfall; PSA = PriceCharting
+  // (si hay token) o el multiplicador de Configuración.
+  const sugerencia = usePrecioSugerido(grado, elegida ? { scryfall_id: elegida.scryfall_id } : null, setPrecio);
 
   // Autocompletado con una pausa de 250 ms, para no pegarle a Scryfall en
   // cada tecla. Si llega tarde una respuesta vieja, se descarta.
@@ -107,6 +110,9 @@ export default function AgregarCarta({ grados, onCerrar, onAgregada }) {
   const visibles = (impresiones || []).filter((i) =>
     !filtroSet || `${i.set_nombre} ${i.set_codigo}`.toLowerCase().includes(filtroSet.toLowerCase()));
   const precioNum = precio === "" ? null : Number(precio);
+  // Si esta impresión ya está en el inventario con otros grados, se avisa:
+  // elegir un grado distinto crea otra variante (ej. el mismo Blind Seer en PSA 10).
+  const yaCargadas = elegida ? inventario.filter((i) => i.scryfall_id === elegida.scryfall_id) : [];
 
   return (
     <Modal
@@ -206,6 +212,12 @@ export default function AgregarCarta({ grados, onCerrar, onAgregada }) {
               {elegida.set_nombre} ({elegida.set_codigo}) #{elegida.numero} · {elegida.fecha?.slice(0, 4)}{" "}
               {elegida.legal_standard && <Etiqueta tono="estado-realizada">Legal en Standard</Etiqueta>}
             </p>
+            {yaCargadas.length > 0 && (
+              <div className="aviso-suave">
+                Ya tenés esta impresión: {yaCargadas.map((y) => `${y.grado} (${y.cantidad} u.)`).join(", ")}.
+                Con otro grado se agrega como una versión nueva; con el mismo, se suman unidades.
+              </div>
+            )}
             <div className="fila-campos">
               <label className="campo">
                 <span>Grado</span>
@@ -223,8 +235,9 @@ export default function AgregarCarta({ grados, onCerrar, onAgregada }) {
               </label>
             </div>
             <label className="campo">
-              <span>Precio en dólares {elegida.precio_usd != null && <em>(Scryfall: {dolares(elegida.precio_usd)})</em>}</span>
+              <span>Precio en dólares {elegida.precio_usd != null && <em>(Scryfall sin graduar: {dolares(elegida.precio_usd)})</em>}</span>
               <input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} />
+              <NotaSugerencia sugerencia={sugerencia} precio={precio} onUsar={() => setPrecio(sugerencia.precio_usd)} />
               <small>
                 {precioNum != null
                   ? `Se vende a ${pesos(Math.round(precioNum * dolar))} (dólar ${pesos(dolar)}, antes de descuentos).`

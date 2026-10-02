@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import * as api from "./api.js";
+
 /* Piezas que comparten todas las pestañas del panel. */
 
 // --- fechas ------------------------------------------------------------------
@@ -61,6 +63,56 @@ export function EtiquetaEstado({ estado, corta = false }) {
 export function EtiquetaStock({ estado }) {
   const textos = { ok: "En stock", bajo: "Stock bajo", sin: "Sin stock" };
   return <Etiqueta tono={`stock-${estado}`}>{textos[estado]}</Etiqueta>;
+}
+
+// Cada tipo de movimiento del registro de actividad, con su etiqueta. El texto
+// dice qué fue; el color acompaña.
+export const TIPOS_MOVIMIENTO = {
+  reserva: { texto: "Pedido", tono: "estado-pendiente" },
+  estado: { texto: "Estado", tono: "estado-pendiente" },
+  venta: { texto: "Venta", tono: "estado-realizada" },
+  devolucion: { texto: "Rechazo", tono: "estado-rechazada" },
+  pedido: { texto: "Pedido", tono: "neutro" },
+  comentario: { texto: "Comentario", tono: "grado" },
+  entrada: { texto: "Entrada", tono: "stock-ok" },
+  ajuste: { texto: "Ajuste", tono: "stock-bajo" },
+  edicion: { texto: "Edición", tono: "neutro" },
+  baja: { texto: "Baja", tono: "estado-rechazada" },
+  config: { texto: "Configuración", tono: "neutro" },
+};
+
+// --- precio sugerido por grado -------------------------------------------------
+
+/** Pide el precio sugerido cada vez que cambia el grado (o la carta) y lo
+    aplica al campo de precio. `params` = { scryfall_id } o { item_id }. */
+export function usePrecioSugerido(grado, params, setPrecio) {
+  const [sugerencia, setSugerencia] = useState(null);
+  const clave = JSON.stringify(params);
+  useEffect(() => {
+    if (!grado || !params || Object.values(params).every((v) => v == null)) return;
+    let vigente = true;
+    api.precioSugerido({ grado, ...params })
+      .then((r) => {
+        if (!vigente) return;
+        setSugerencia(r);
+        if (r.precio_usd != null) setPrecio(r.precio_usd);
+      })
+      .catch(() => vigente && setSugerencia(null));
+    return () => { vigente = false; };
+  }, [grado, clave]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return sugerencia;
+}
+
+export function NotaSugerencia({ sugerencia, precio, onUsar }) {
+  if (!sugerencia) return null;
+  const distinto = sugerencia.precio_usd != null && Number(precio) !== sugerencia.precio_usd;
+  return (
+    <small className={`nota-sugerencia fuente-${sugerencia.fuente}`}>
+      {sugerencia.precio_usd != null && <>Sugerido: <strong>US$ {sugerencia.precio_usd.toFixed(2).replace(".", ",")}</strong> · </>}
+      {sugerencia.detalle}
+      {distinto && <> <button type="button" className="enlace" onClick={onUsar}>Usar sugerido</button></>}
+    </small>
+  );
 }
 
 // --- modal -------------------------------------------------------------------

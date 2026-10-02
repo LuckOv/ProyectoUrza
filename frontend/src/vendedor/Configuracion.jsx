@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { pesos } from "../formato.js";
 import * as api from "./api.js";
 import { Icono, Modal, haceCuanto, useAviso } from "./comunes.jsx";
+import RegistroActividad from "./RegistroActividad.jsx";
 
 const NOMBRE_CASA = {
   blue: "Blue", oficial: "Oficial", tarjeta: "Tarjeta", bolsa: "MEP (bolsa)",
@@ -125,6 +126,7 @@ export default function Configuracion() {
   const [horarios, setHorarios] = useState(null);
   const [dolar, setDolar] = useState(null);
   const [stockBajo, setStockBajo] = useState(2);
+  const [multiplicadores, setMultiplicadores] = useState({});
   const [descuentos, setDescuentos] = useState(null);
   const [panel, setPanel] = useState(false);
   const [ocupado, setOcupado] = useState("");
@@ -136,6 +138,7 @@ export default function Configuracion() {
     setHorarios(c.horarios);
     setDolar({ modo: c.dolar.modo, casa: c.dolar.casa, valor: c.dolar.valor });
     setStockBajo(c.stock_bajo);
+    setMultiplicadores(c.multiplicadores || {});
   };
 
   useEffect(() => {
@@ -290,6 +293,48 @@ export default function Configuracion() {
           </div>
         </section>
 
+        {/* Precio de graduadas */}
+        <section className="bloque">
+          <div className="bloque-cabeza">
+            <div>
+              <h3>Precio de cartas graduadas</h3>
+              <p className="ayuda">
+                Scryfall sólo tiene el precio de la carta sin graduar. Al cargar una PSA, el precio se sugiere
+                multiplicando ese valor por el número de su grado (después lo podés cambiar a mano).
+              </p>
+            </div>
+            <span className={`etiqueta ${conf.pricecharting ? "stock-ok" : "neutro"}`}>
+              {conf.pricecharting ? "PriceCharting conectado" : "Sin PriceCharting"}
+            </span>
+          </div>
+          <div className="multiplicadores">
+            {conf.grados.filter((g) => g !== "Sin graduar").map((g) => (
+              <label key={g} className="multiplicador">
+                <span>{g}</span>
+                <div className="con-sufijo">
+                  <span>×</span>
+                  <input type="number" min="0.1" max="100" step="0.1" value={multiplicadores[g] ?? 1}
+                         onChange={(e) => setMultiplicadores((m) => ({ ...m, [g]: e.target.value }))}
+                         aria-label={`Multiplicador de ${g}`} />
+                </div>
+              </label>
+            ))}
+          </div>
+          <div className="bloque-pie">
+            <span className="apagado">
+              {conf.pricecharting
+                ? "Con PriceCharting se usa su precio real para PSA 10, 9, 8 y 7; estos multiplicadores quedan para el resto."
+                : "Para precios reales por grado, poné PRICECHARTING_TOKEN en backend/.env (es una API paga)."}
+            </span>
+            <button className="boton primario" disabled={ocupado === "multi"}
+                    onClick={() => guardar("multi", {
+                      multiplicadores: Object.fromEntries(Object.entries(multiplicadores).map(([g, v]) => [g, Number(v)])),
+                    }, "Multiplicadores guardados.")}>
+              Guardar
+            </button>
+          </div>
+        </section>
+
         {/* Descuentos */}
         <section className="bloque">
           <div className="bloque-cabeza">
@@ -304,6 +349,10 @@ export default function Configuracion() {
             <button className="boton primario" onClick={() => setPanel(true)}>Gestionar descuentos</button>
           </div>
         </section>
+      </div>
+
+      <div className="hoja preferencias">
+        <RegistroActividad />
       </div>
 
       {panel && <PanelDescuentos onCerrar={() => setPanel(false)} onCambio={setDescuentos} />}
