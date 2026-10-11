@@ -3,9 +3,32 @@ import { useEffect, useRef, useState } from "react";
 import Abanico from "./Abanico.jsx";
 import Bolitas from "./Bolitas.jsx";
 import Catalogo from "./Catalogo.jsx";
+import FormPropuesta from "./FormPropuesta.jsx";
 import Carrito from "./Carrito.jsx";
 import Carta3D from "./Carta3D.jsx";
 import * as api from "./api.js";
+
+// El equipo de Urza: quién está detrás de cada respuesta.
+const EQUIPO = {
+  Tibalt: "el vendedor",
+  Ajani: "el juez",
+  Teferi: "el historiador",
+  Saheeli: "la armadora de mazos",
+};
+
+function QuienResponde({ agentes }) {
+  const otros = (agentes || []).filter((a) => EQUIPO[a]);
+  return (
+    <p className="quien">
+      <strong>Urza</strong>
+      {otros.length > 0 && (
+        <> · consultó a {otros.map((a, i) => (
+          <span key={a}>{i > 0 && (i === otros.length - 1 ? " y " : ", ")}<strong>{a}</strong>, {EQUIPO[a]}</span>
+        ))}</>
+      )}
+    </p>
+  );
+}
 
 const SUGERENCIAS = [
   { texto: "¿Tenés Cavern of Souls?", icono: "stock" },
@@ -13,6 +36,7 @@ const SUGERENCIAS = [
   { texto: "Quiero comprar Heartfire Hero", icono: "compra" },
   { texto: "¿Qué cartas tenés?", icono: "stock" },
   { texto: "Ayudame a armar un mazo verde de elfos", icono: "precio" },
+  { texto: "Quiero venderles una carta", icono: "compra", propuesta: true },
 ];
 
 function Icono({ tipo }) {
@@ -147,6 +171,8 @@ export default function App() {
               pedido: data.pedido,
               mazo: data.mazo,
               catalogo: data.catalogo,
+              propuesta: data.propuesta,
+              agentes: data.agentes,
             },
       ]);
       // El agente pudo haber agregado, sacado o cerrado la compra: el
@@ -162,6 +188,19 @@ export default function App() {
     } finally {
       setPensando(false);
     }
+  }
+
+  // Botón "Ofrecer una carta": abre la planilla de propuesta al toque, sin
+  // esperar al agente.
+  function abrirPropuesta(dijo) {
+    setMensajes((m) => [...m, ...(dijo ? [{ rol: "jugador", texto: dijo }] : []), {
+      rol: "urza",
+      agentes: ["Tibalt"],
+      texto: "Completá la planilla: buscá la carta en la lista y elegí la edición exacta, "
+        + "poné grado, cantidad y precio, y dejá tu nombre, apellido y mail (obligatorios). "
+        + "Te respondemos por mail.",
+      propuesta: {},
+    }]);
   }
 
   function finalizarCompra() {
@@ -198,6 +237,7 @@ export default function App() {
             const traza = verTrazas ? trazaDe(m.herramientas) : "";
             return (
               <div key={i} className="turno">
+                {m.rol === "urza" && <QuienResponde agentes={m.agentes} />}
                 <div className={`msg ${m.rol}`}>
                   {m.texto}
                   {traza && <div className="traza">{traza}</div>}
@@ -210,6 +250,17 @@ export default function App() {
                   />
                 )}
                 {m.mazo?.length > 0 && <Abanico cartas={m.mazo} />}
+                {m.propuesta && (
+                  <FormPropuesta
+                    inicial={m.propuesta}
+                    threadId={threadId}
+                    onEnviada={(p) => setMensajes((ms) => [...ms, {
+                      rol: "urza",
+                      agentes: ["Tibalt"],
+                      texto: `¡Listo, recibimos tu propuesta #${p.id}! La revisamos y te respondemos a ${p.email}.`,
+                    }])}
+                  />
+                )}
                 {m.catalogo && (
                   <button className="ver-catalogo" onClick={() => setPanel("catalogo")}>
                     Ver todas las cartas
@@ -262,7 +313,7 @@ export default function App() {
           <ul className="sugerencias">
             {SUGERENCIAS.map((s) => (
               <li key={s.texto}>
-                <button onClick={() => enviar(s.texto)}>
+                <button onClick={() => (s.propuesta ? abrirPropuesta(s.texto) : enviar(s.texto))}>
                   <Icono tipo={s.icono} />
                   {s.texto}
                 </button>
@@ -272,11 +323,16 @@ export default function App() {
         )}
 
         {!vacio && (
-          <label className="toggle">
-            <input type="checkbox" checked={verTrazas}
-                   onChange={(e) => setVerTrazas(e.target.checked)} />
-            Mostrar qué herramientas usó
-          </label>
+          <div className="pie-chat">
+            <label className="toggle">
+              <input type="checkbox" checked={verTrazas}
+                     onChange={(e) => setVerTrazas(e.target.checked)} />
+              Mostrar qué herramientas usó
+            </label>
+            <button className="ofrecer-carta" onClick={() => abrirPropuesta()} disabled={pensando}>
+              Ofrecer una carta a la tienda
+            </button>
+          </div>
         )}
       </main>
 

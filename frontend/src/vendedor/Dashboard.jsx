@@ -4,6 +4,9 @@ import { dolares, numero, pesos } from "../formato.js";
 import * as api from "./api.js";
 import { EtiquetaEstado, fechaCorta } from "./comunes.jsx";
 import GraficoVentas from "./GraficoVentas.jsx";
+import { AlertasInventario, BarrasSets, ListaCartas, TortaColores } from "./PanelesVentas.jsx";
+
+const PERIODOS = [[30, "Últimos 30 días"], [90, "Últimos 90 días"], [0, "Todo"]];
 
 function Tile({ titulo, valor, nota, tono }) {
   return (
@@ -34,10 +37,11 @@ function Medidor({ etiqueta, valor, maximo, tono, detalle }) {
 export default function Dashboard({ ir }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState("");
+  const [periodo, setPeriodo] = useState(30);
 
   useEffect(() => {
-    api.dashboard().then(setD).catch((e) => setError(e.message));
-  }, []);
+    api.dashboard(periodo).then(setD).catch((e) => setError(e.message));
+  }, [periodo]);
 
   if (error) return <p className="hoja error-texto">{error}</p>;
   if (!d) return <p className="cargando">Cargando…</p>;
@@ -81,7 +85,32 @@ export default function Dashboard({ ir }) {
         />
       </div>
 
-      <GraficoVentas dias={d.ventas_dias || []} cartas={d.ventas_cartas || []} />
+      <AlertasInventario alertas={d.alertas} ir={ir} />
+
+      <GraficoVentas dias={d.ventas_dias || []} />
+
+      <div className="movimientos-cabeza">
+        <h2>Movimientos de cartas</h2>
+        <label className="selector">
+          <select value={periodo} onChange={(e) => setPeriodo(Number(e.target.value))} aria-label="Período">
+            {PERIODOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="tres-columnas">
+        <div className="hoja">
+          <h2>Color más vendido</h2>
+          <TortaColores colores={d.rankings.colores} />
+        </div>
+        <div className="hoja">
+          <h2>Cartas más vendidas</h2>
+          <ListaCartas cartas={d.rankings.cartas} />
+        </div>
+        <div className="hoja">
+          <h2>Expansiones más vendidas</h2>
+          <BarrasSets sets={d.rankings.sets} />
+        </div>
+      </div>
 
       <div className="dos-columnas">
         <div className="hoja lista-hoja">

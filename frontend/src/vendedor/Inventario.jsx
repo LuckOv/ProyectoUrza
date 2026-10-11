@@ -4,7 +4,7 @@ import { dolares, numero, pesos } from "../formato.js";
 import AgregarCarta from "./AgregarCarta.jsx";
 import * as api from "./api.js";
 import {
-  Confirmar, Etiqueta, EtiquetaStock, Icono, Modal, NotaSugerencia, useAviso, usePrecioSugerido,
+  Confirmar, Etiqueta, EtiquetaStock, Icono, Modal, NotaSugerencia, useAviso, usePrecioSugerido, textoAlerta,
 } from "./comunes.jsx";
 
 const RAREZA = { common: "Común", uncommon: "Infrecuente", rare: "Rara", mythic: "Mítica", special: "Especial", bonus: "Bonus" };
@@ -190,6 +190,64 @@ function OtroGrado({ carta, todas, grados, dolar, onCerrar, onGuardado }) {
   );
 }
 
+/* Arriba de todo: las cartas cuyo precio de mercado (Scryfall) se movió mucho
+   desde que les pusiste precio. Se sugiere mover el tuyo en la misma
+   proporción (sirve igual para las graduadas). Un clic lo pone al día. */
+function PreciosARevisar({ items, umbral, onActualizar, onMantener, onRefrescar, refrescando }) {
+  const [abierto, setAbierto] = useState(true);
+  if (!items.length) return null;
+  return (
+    <div className="hoja alertas-precio">
+      <div className="lista-cabeza">
+        <div>
+          <h2>Precios a revisar ({items.length})</h2>
+          <p className="apagado chico">
+            Cartas con tu precio {umbral}% o más lejos del precio de mercado de hoy (el doble para las graduadas,
+            que se estiman con el multiplicador), o cuyo mercado se movió {umbral}% o más desde que les pusiste precio.
+          </p>
+        </div>
+        <div className="resumen-acciones">
+          <button className="boton chico" onClick={onRefrescar} disabled={refrescando}>
+            {refrescando ? "Consultando Scryfall…" : "Actualizar precios de mercado"}
+          </button>
+          <button className="boton chico" onClick={() => setAbierto((a) => !a)}>{abierto ? "Ocultar" : "Ver"}</button>
+        </div>
+      </div>
+      {abierto && (
+        <ul className="alertas-lista">
+          {items.map((i) => {
+            const t = textoAlerta(i);
+            return (
+              <li key={i.id}>
+                {i.imagen ? <img src={i.imagen} alt="" /> : <span className="mini-sinimg" />}
+                <div className="alertas-datos">
+                  <strong>{i.nombre}</strong>
+                  <span className="apagado">{i.set_nombre} · {i.grado}</span>
+                </div>
+                <div className="alertas-precios">
+                  <span>Tu precio <strong>{dolares(i.precio_usd)}</strong></span>
+                  <span>
+                    {t.detalle} {t.desde != null && <>{dolares(t.desde)} → </>}<strong>{dolares(t.hasta)}</strong>
+                  </span>
+                </div>
+                <Etiqueta tono={t.tono}>{t.etiqueta}</Etiqueta>
+                <div className="alertas-botones">
+                  <button className="boton chico primario" onClick={() => onActualizar(i)}>
+                    Poner {dolares(i.sugerido_usd)}
+                  </button>
+                  <button className="boton chico" onClick={() => onMantener(i)} title="No avisar más mientras no cambies este precio">
+                    Dejarlo así
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function Inventario() {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
@@ -201,6 +259,7 @@ export default function Inventario() {
   const [elegidas, setElegidas] = useState(new Set());
   const [modal, setModal] = useState(null);     // "agregar" | "editar" | "grado" | "borrar"
   const [avisar, aviso] = useAviso();
+  const [refrescando, setRefrescando] = useState(false);
 
   async function cargar() {
     try {
@@ -293,6 +352,42 @@ export default function Inventario() {
           )}
         </div>
       )}
+
+      <PreciosARevisar
+        items={(datos?.items || []).filter((i) => i.alerta_precio).sort((a, b) => Math.abs(b.alerta_pct) - Math.abs(a.alerta_pct))}
+        umbral={datos?.alerta_precio ?? 30}
+        refrescando={refrescando}
+        onRefrescar={async () => {
+          setRefrescando(true);
+          try {
+            const r = await api.actualizarMercado();
+            avisar(`Precios de mercado actualizados (${r.actualizadas} cartas).`);
+            cargar();
+          } catch (e) {
+            avisar(e.message, true);
+          } finally {
+            setRefrescando(false);
+          }
+        }}
+        onMantener={async (i) => {
+          try {
+            await api.mantenerPrecio(i.id);
+            avisar(`${i.nombre} (${i.grado}) se queda en ${dolares(i.precio_usd)}. No te aviso más mientras no lo cambies.`);
+            cargar();
+          } catch (e) {
+            avisar(e.message, true);
+          }
+        }}
+        onActualizar={async (i) => {
+          try {
+            await api.editarCarta(i.id, { precio_usd: i.sugerido_usd, motivo: "precio al día con el mercado" });
+            avisar(`${i.nombre} (${i.grado}) ahora está a ${dolares(i.sugerido_usd)}.`);
+            cargar();
+          } catch (e) {
+            avisar(e.message, true);
+          }
+        }}
+      />
 
       <div className="hoja resumen">
         <p>

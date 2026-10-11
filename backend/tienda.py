@@ -204,9 +204,11 @@ def _crear_pedido(con, lineas: list, nombre: str, apellido: str, fecha: str, hor
 
     for v, cant in detalle:
         con.execute(
-            """INSERT INTO pedido_items (pedido_id, inventario_id, nombre, set_nombre, grado, precio, cantidad)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (pedido_id, v["id"], v["nombre"], v["set_nombre"], v["grado"], v["precio_ars"], cant),
+            """INSERT INTO pedido_items (pedido_id, inventario_id, nombre, set_nombre, set_codigo, colores,
+                                        grado, precio, cantidad)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pedido_id, v["id"], v["nombre"], v["set_nombre"], v.get("set_codigo"), v.get("colores"),
+             v["grado"], v["precio_ars"], cant),
         )
         inventario.mover_stock(con, v["id"], -cant)
 
@@ -266,7 +268,8 @@ def _con_items(con, pedidos) -> list:
     resultado = []
     for p in pedidos:
         items = con.execute(
-            "SELECT inventario_id, nombre, set_nombre, grado, precio, cantidad FROM pedido_items WHERE pedido_id = ?",
+            "SELECT inventario_id, nombre, set_nombre, set_codigo, colores, grado, precio, cantidad "
+            "FROM pedido_items WHERE pedido_id = ?",
             (p["id"],),
         ).fetchall()
         d = dict(p)

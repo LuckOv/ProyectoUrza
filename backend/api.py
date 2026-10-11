@@ -26,6 +26,7 @@ from pydantic import BaseModel
 import base
 import cartas
 import inventario
+import propuestas
 import tienda
 import vendedor
 
@@ -93,6 +94,42 @@ def vaciar_carrito(thread_id: str):
 
 # --- cartas ------------------------------------------------------------------
 
+class NuevaPropuesta(BaseModel):
+    thread_id: str | None = None
+    nombre: str
+    apellido: str
+    email: str
+    scryfall_id: str
+    grado: str = "Sin graduar"
+    cantidad: int = 1
+    precio: float
+    moneda: str = "ARS"
+    comentario: str = ""
+
+
+@app.post("/propuestas")
+def nueva_propuesta(datos: NuevaPropuesta):
+    """El cliente le ofrece una carta a la tienda. Nombre, apellido y mail son obligatorios."""
+    try:
+        return propuestas.crear(
+            datos.thread_id, datos.nombre, datos.apellido, datos.email, datos.scryfall_id,
+            datos.grado, datos.cantidad, datos.precio, datos.moneda, datos.comentario,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/cartas/autocompletar")
+def cartas_autocompletar(q: str):
+    """Todas las cartas que existen (Scryfall), para elegir la que se propone."""
+    return {"nombres": cartas.autocompletar(q), "grados": inventario.GRADOS}
+
+
+@app.get("/cartas/impresiones")
+def cartas_impresiones(nombre: str):
+    return {"impresiones": cartas.impresiones(nombre)}
+
+
 @app.get("/catalogo")
 def catalogo():
     """Todas las cartas a la venta (con stock y precio), para la lista con buscador."""
@@ -114,6 +151,13 @@ _grafo = None
 # Herramientas cuyo argumento nombre_carta NO debe disparar la carta 3D:
 # si el jugador saca una carta del carrito, no tiene sentido volver a mostrarla.
 _SIN_CARTA = {"quitar_del_carrito"}
+
+# Qué planeswalker del equipo de Urza está detrás de cada herramienta.
+AGENTE_DE = {
+    "consultar_reglas_mtg": "Ajani",
+    "consultar_lore_mtg": "Teferi",
+    "sugerir_cartas_mazo": "Saheeli",
+}   # el resto (stock, precios, carrito, compra, catálogo, propuestas) es Tibalt
 
 
 def _obtener_grafo():
@@ -139,7 +183,7 @@ def chat(consulta: Consulta):
     vacia = {
         "texto": "", "herramientas": [], "carta": None,
         "carrito": tienda.ver_carrito(consulta.thread_id), "pedido": None,
-        "mazo": None, "catalogo": False,
+        "mazo": None, "catalogo": False, "propuesta": None, "agentes": [],
     }
 
     try:
@@ -173,6 +217,8 @@ def chat(consulta: Consulta):
     pedido = None
     mazo = None
     catalogo_pedido = False
+    propuesta = None
+    agentes = []
 
     for m in tramo:
         for llamada in getattr(m, "tool_calls", None) or []:
@@ -197,20 +243,38 @@ def chat(consulta: Consulta):
                 mazo = [{"nombre": c["nombre"], "imagen": c.get("imagen")} for c in m.artifact]
             if nombre == "listar_cartas_disponibles":
                 catalogo_pedido = True
+            if nombre == "iniciar_propuesta" and getattr(m, "artifact", None) is not None:
+                propuesta = m.artifact
+            quien = AGENTE_DE.get(nombre, "Tibalt")
+            if quien not in agentes:
+                agentes.append(quien)
 
     texto = str(tramo[-1].content).strip() if tramo else ""
+
+    # El jugador quiere venderle una carta a la tienda pero el modelo no abrió
+    # el formulario: se abre igual, precargado con lo que se pudo leer del mensaje.
+    if propuesta is None and propuestas.quiere_vender(consulta.texto):
+        propuesta = propuestas.datos_desde_texto(consulta.texto)
+        texto = propuestas.TEXTO_FORMULARIO
+        if "Tibalt" not in agentes:
+            agentes.append("Tibalt")
+
     if not texto:
         texto = "No obtuve una respuesta del agente para esa consulta. Probá reformulándola."
 
     return {
         "texto": texto,
         "herramientas": herramientas,
-        "carta": cartas.buscar(ultimo_nombre) if ultimo_nombre else None,
+        # Si se abrió la planilla para vender, no se muestra la carta 3D de la
+        # tienda: confunde (parece que se la estás comprando).
+        "carta": cartas.buscar(ultimo_nombre) if ultimo_nombre and propuesta is None else None,
         # El agente pudo haber tocado el carrito: se devuelve cómo quedó
         # para que el front actualice el ícono sin otro pedido.
         "carrito": tienda.ver_carrito(consulta.thread_id),
         "pedido": pedido,
         "mazo": mazo,
         "catalogo": catalogo_pedido,
+        "propuesta": propuesta,
+        "agentes": agentes,
         "error": "",
     }

@@ -7,10 +7,12 @@ import Dashboard from "./Dashboard.jsx";
 import Historial from "./Historial.jsx";
 import Inventario from "./Inventario.jsx";
 import Pedidos from "./Pedidos.jsx";
+import Propuestas from "./Propuestas.jsx";
 
 const PESTANAS = [
   { id: "inventario", nombre: "Inventario", Vista: Inventario },
   { id: "pedidos", nombre: "Pedidos", Vista: Pedidos },
+  { id: "propuestas", nombre: "Propuestas", Vista: Propuestas },
   { id: "dashboard", nombre: "Dashboard", Vista: Dashboard },
   { id: "historial", nombre: "Historial", Vista: Historial },
   { id: "configuracion", nombre: "Configuración", Vista: Configuracion },
@@ -66,6 +68,15 @@ export default function Panel() {
   const [adentro, setAdentro] = useState(api.hayClave());
   const [claveDebil, setClaveDebil] = useState(false);
   const [pestana, setPestana] = useState(pestanaDelHash);
+  const [nuevas, setNuevas] = useState(0);   // propuestas sin mirar, para el globito de la pestaña
+
+  useEffect(() => {
+    if (!adentro) return;
+    const mirar = () => api.propuestas({ estado: "nueva" }).then((r) => setNuevas(r.nuevas)).catch(() => {});
+    mirar();
+    const t = setInterval(mirar, 60000);
+    return () => clearInterval(t);
+  }, [adentro, pestana]);
 
   useEffect(() => {
     api.cuandoVenza(() => setAdentro(false));
@@ -98,6 +109,7 @@ export default function Panel() {
                 onClick={() => ir(p.id)}
               >
                 {p.nombre}
+                {p.id === "propuestas" && nuevas > 0 && <span className="globito" aria-label={`${nuevas} nuevas`}>{nuevas}</span>}
               </button>
             ))}
           </nav>

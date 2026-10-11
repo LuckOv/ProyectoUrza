@@ -18,11 +18,13 @@ hace con ingestar_lore.py.
 
 from pathlib import Path
 
-from langchain_chroma import Chroma
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
-from reglas import _funcion_embedding, _funcion_rerank, _juez_llm, _traducir
+from reglas import _funcion_embedding, _funcion_rerank, _juez_llm, _traducir, motivo_no_disponible
+
+# Chroma se importa recién al cargar la base (cargar_rag): arrastra torch, que
+# algunos Windows bloquean. Así un bloqueo sólo apaga el lore, no el agente.
 
 BASE = Path(__file__).parent
 RAG_DIR = BASE / "lore_db"
@@ -39,6 +41,7 @@ def cargar_rag():
     if _vectorstore is None:
         if not (RAG_DIR / "chroma.sqlite3").exists():
             return None
+        from langchain_chroma import Chroma
         _vectorstore = Chroma(
             collection_name=COLECCION,
             embedding_function=_funcion_embedding(),
@@ -48,8 +51,9 @@ def cargar_rag():
 
 
 SYSTEM_PROMPT_HISTORIADOR = SystemMessage(content="""
-Sos un ERUDITO del lore de Magic: The Gathering. Contás la historia y la
-narrativa del multiverso: planos, personajes, eventos y tramas.
+Sos TEFERI, el ERUDITO del lore del equipo de Urza en la tienda de Magic: The
+Gathering. Contás la historia y la narrativa del multiverso: planos, personajes,
+eventos y tramas.
 
 REGLAS DE ORO:
 1. Respondé ÚNICAMENTE con la información que te dan como CONTEXTO, extraída de
@@ -79,7 +83,10 @@ def consultar_lore_mtg(pregunta: str) -> str:
     NO usarla para reglas del juego, precios, stock ni datos de cartas.
     Devuelve la respuesta con las fuentes citadas (artículos de la MTG Wiki).
     """
-    vs = cargar_rag()
+    try:
+        vs = cargar_rag()
+    except Exception as e:
+        return f"El erudito de lore no está disponible ahora. {motivo_no_disponible(e)}"
     if vs is None:
         return (
             "Todavía no tengo cargada la base de lore en el servidor. "
@@ -89,13 +96,16 @@ def consultar_lore_mtg(pregunta: str) -> str:
     # La wiki está en inglés; traducir la pregunta mejora la recuperación. Si no
     # hay API key o Groq falla, los embeddings multilingües cubren lo esencial.
     consulta = _traducir(pregunta) or pregunta
-    docs = vs.similarity_search(consulta, k=K_CANDIDATOS)
-    if not docs:
-        return "No recuperé ninguna página de lore para esa consulta. Probemos reformularla."
+    try:
+        docs = vs.similarity_search(consulta, k=K_CANDIDATOS)
+        if not docs:
+            return "No recuperé ninguna página de lore para esa consulta. Probemos reformularla."
 
-    # Rerank: el cross-encoder multilingüe ordena los candidatos por relevancia
-    # real para el jugador, en vez del ruido del bi-encoder de recuperación.
-    puntajes = _funcion_rerank().predict([(consulta, d.page_content) for d in docs])
+        # Rerank: el cross-encoder multilingüe ordena los candidatos por relevancia
+        # real para el jugador, en vez del ruido del bi-encoder de recuperación.
+        puntajes = _funcion_rerank().predict([(consulta, d.page_content) for d in docs])
+    except Exception as e:
+        return f"El erudito de lore no está disponible ahora. {motivo_no_disponible(e)}"
     mejores = [d for _, d in sorted(zip(puntajes, docs), key=lambda x: -x[0])][:K_RESULTADOS]
 
     contexto = "\n\n".join(

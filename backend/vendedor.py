@@ -19,6 +19,7 @@ from pydantic import BaseModel
 import base
 import cartas
 import inventario
+import propuestas
 import tienda
 
 load_dotenv()
@@ -79,6 +80,7 @@ class Ids(BaseModel):
 
 @protegido.get("/inventario")
 def ver_inventario(q: str | None = None, estado: str | None = None):
+    inventario.refrescar_mercado()   # como mucho cada 5 minutos; trae de Scryfall sólo lo viejo
     items = inventario.listar(q, estado)
     return {
         "items": items,
@@ -86,6 +88,7 @@ def ver_inventario(q: str | None = None, estado: str | None = None):
         "unidades": sum(i["cantidad"] for i in items),
         "grados": inventario.GRADOS,
         "dolar": inventario.valor_dolar(),
+        "alerta_precio": base.config("alerta_precio"),
     }
 
 
@@ -116,6 +119,15 @@ def nueva_variante(item_id: int, datos: NuevaVariante):
     """La misma carta con otro grado (PSA)."""
     try:
         return inventario.agregar_variante(item_id, datos.grado, datos.cantidad, datos.precio_usd)
+    except ValueError as e:
+        _error(e)
+
+
+@protegido.post("/inventario/{item_id}/mantener-precio")
+def mantener_precio(item_id: int):
+    """'Dejarlo así' en Precios a revisar."""
+    try:
+        return inventario.mantener_precio(item_id)
     except ValueError as e:
         _error(e)
 
@@ -246,8 +258,101 @@ def exportar_historial(desde: str | None = None, hasta: str | None = None, estad
 
 # --- dashboard ---------------------------------------------------------------
 
+NOMBRE_COLOR = {"W": "Blanco", "U": "Azul", "B": "Negro", "R": "Rojo", "G": "Verde",
+                "M": "Multicolor", "C": "Incoloro", "?": "Sin dato"}
+
+
+def _grupo_color(colores) -> str:
+    if colores is None:
+        return "?"
+    if colores == "":
+        return "C"
+    return colores if len(colores) == 1 else "M"
+
+
+def _rankings(pedidos: list, desde: str | None) -> dict:
+    """Lo vendido (pedidos 'realizada') desde una fecha: por carta, por expansión y por color."""
+    with base.conectar() as con:
+        cuando = {
+            f["pedido_id"]: f["fecha"][:10]
+            for f in con.execute(
+                "SELECT pedido_id, MAX(fecha) AS fecha FROM movimientos "
+                "WHERE tipo = 'venta' AND pedido_id IS NOT NULL GROUP BY pedido_id"
+            ).fetchall()
+        }
+        # Para ítems viejos sin colores guardados, se miran en el inventario.
+        inv = {f["id"]: dict(f) for f in con.execute(
+            "SELECT id, nombre, colores, set_codigo, set_nombre FROM inventario").fetchall()}
+    por_nombre = {i["nombre"]: i for i in inv.values()}
+
+    cartas_v, sets_v, colores_v = {}, {}, {}
+    for p in pedidos:
+        if p["estado"] != "realizada":
+            continue
+        if desde and cuando.get(p["id"], p["fecha_retiro"]) < desde:
+            continue
+        for i in p["items"]:
+            ref = inv.get(i["inventario_id"]) or por_nombre.get(i["nombre"]) or {}
+            colores = i.get("colores") if i.get("colores") is not None else ref.get("colores")
+            set_nombre = i.get("set_nombre") or ref.get("set_nombre") or "Sin set"
+            monto = (i["precio"] or 0) * i["cantidad"]
+            for dic, clave, extra in (
+                (cartas_v, i["nombre"], {"nombre": i["nombre"]}),
+                (sets_v, set_nombre, {"set": set_nombre}),
+                (colores_v, _grupo_color(colores), {}),
+            ):
+                d = dic.setdefault(clave, {**extra, "unidades": 0, "total": 0})
+                d["unidades"] += i["cantidad"]
+                d["total"] += monto
+
+    orden = lambda d: sorted(d.values(), key=lambda x: (-x["unidades"], -x["total"]))
+    colores = [{"color": k, "nombre": NOMBRE_COLOR[k], **v} for k, v in colores_v.items()]
+    return {
+        "cartas": [{**c, "total": round(c["total"])} for c in orden(cartas_v)[:10]],
+        "sets": [{**c, "total": round(c["total"])} for c in orden(sets_v)[:8]],
+        "colores": sorted([{**c, "total": round(c["total"])} for c in colores], key=lambda x: -x["unidades"]),
+    }
+
+
+def _alertas(items: list, pedidos: list, hoy) -> dict:
+    """Cambios bruscos: precios lejos del mercado, el mercado entero moviéndose y stock que se desplomó."""
+    umbral = float(base.config("alerta_precio") or 30)
+    precio = sorted([i for i in items if i["alerta_precio"]], key=lambda i: -abs(i["alerta_pct"]))
+
+    # Movimiento global: mediana de cuánto se movió el mercado en todo el inventario.
+    difs = sorted(i["mercado_cambio_pct"] for i in items if i["mercado_cambio_pct"] is not None)
+    mediana = difs[len(difs) // 2] if difs else None
+    global_ = None
+    if mediana is not None and abs(mediana) >= umbral / 2 and len(difs) >= 5:
+        global_ = {
+            "mediana_pct": mediana,
+            "texto": (f"El mercado en general {'subió' if mediana > 0 else 'bajó'} {abs(mediana):.0f}% "
+                      "desde que pusiste tus precios. Conviene revisarlos."),
+        }
+
+    # Stock que cayó mucho en 7 días (reservas y ventas de la semana).
+    hace_7 = (hoy - timedelta(days=7)).isoformat()
+    salidas = {}
+    for p in pedidos:
+        if p["estado"] == "rechazada" or p["creado"][:10] < hace_7:
+            continue
+        for i in p["items"]:
+            if i["inventario_id"]:
+                salidas[i["inventario_id"]] = salidas.get(i["inventario_id"], 0) + i["cantidad"]
+    stock = []
+    for i in items:
+        sale = salidas.get(i["id"], 0)
+        antes = i["cantidad"] + sale
+        if sale >= 2 and antes and sale / antes >= 0.5:
+            stock.append({"id": i["id"], "nombre": i["nombre"], "grado": i["grado"], "imagen": i["imagen"],
+                          "antes": antes, "ahora": i["cantidad"], "caida_pct": round(sale / antes * 100)})
+    stock.sort(key=lambda x: -x["caida_pct"])
+    return {"precio": precio[:8], "precio_total": len(precio), "global": global_, "stock": stock[:8], "umbral": umbral}
+
+
 @protegido.get("/dashboard")
-def dashboard():
+def dashboard(dias: int = 30):
+    inventario.refrescar_mercado()
     items = inventario.listar()
     hoy = base.ahora().date()
     inicio_mes = hoy.replace(day=1).isoformat()
@@ -266,10 +371,15 @@ def dashboard():
     en_standard = {inventario._plano(i["nombre"]) for i in items if i["legal_standard"] and i["cantidad"] > 0}
 
     ventas_dias, ventas_cartas = _ventas_ultimo_mes(pedidos, hoy)
+    desde_rank = (hoy - timedelta(days=dias - 1)).isoformat() if dias and dias > 0 else None
 
     return {
         "ventas_dias": ventas_dias,
         "ventas_cartas": ventas_cartas,
+        "rankings": _rankings(pedidos, desde_rank),
+        "periodo": dias,
+        "alertas": _alertas(items, pedidos, hoy),
+        "propuestas_nuevas": propuestas.contar_nuevas(),
         "unidades": sum(i["cantidad"] for i in items),
         "cartas_distintas": len(items),
         "entradas_mes": entradas_mes,
@@ -290,6 +400,63 @@ def dashboard():
         "standard": {"tienda": len(en_standard), "total": cartas.total_pool_standard()},
         "dolar": inventario.valor_dolar(),
     }
+
+
+# --- precios de mercado -------------------------------------------------------
+
+@protegido.post("/mercado/actualizar")
+def actualizar_mercado():
+    """Vuelve a traer de Scryfall el precio de mercado de todo el inventario."""
+    n = inventario.refrescar_mercado(forzar=True)
+    return {"actualizadas": n}
+
+
+@protegido.get("/alertas-precio")
+def alertas_precio():
+    inventario.refrescar_mercado()
+    items = [i for i in inventario.listar() if i["alerta_precio"]]
+    return {"items": sorted(items, key=lambda i: -abs(i["alerta_pct"])),
+            "umbral": float(base.config("alerta_precio") or 30)}
+
+
+# --- propuestas de clientes ----------------------------------------------------
+
+class CambioPropuesta(BaseModel):
+    estado: str | None = None
+    comentario: str | None = None
+
+
+class PropuestaAlInventario(BaseModel):
+    precio_usd: float | None = None
+    cantidad: int | None = None
+
+
+@protegido.get("/propuestas")
+def ver_propuestas(estado: str | None = None, q: str | None = None):
+    return {"propuestas": propuestas.listar(estado, q), "estados": propuestas.ESTADOS,
+            "nuevas": propuestas.contar_nuevas(), "dolar": inventario.valor_dolar()}
+
+
+@protegido.patch("/propuestas/{pid}")
+def cambiar_propuesta(pid: int, datos: CambioPropuesta):
+    try:
+        return propuestas.actualizar(pid, datos.estado, datos.comentario)
+    except ValueError as e:
+        _error(e)
+
+
+@protegido.post("/propuestas/{pid}/al-inventario")
+def propuesta_al_inventario(pid: int, datos: PropuestaAlInventario):
+    try:
+        return propuestas.al_inventario(pid, datos.precio_usd, datos.cantidad)
+    except ValueError as e:
+        _error(e)
+
+
+@protegido.delete("/propuestas/{pid}")
+def borrar_propuesta(pid: int):
+    propuestas.borrar(pid)
+    return {"ok": True}
 
 
 # --- registro de actividad ---------------------------------------------------
@@ -349,6 +516,7 @@ class DolarConf(BaseModel):
 
 
 class Configuracion(BaseModel):
+    alerta_precio: float | None = None
     multiplicadores: dict | None = None
     horarios: dict | None = None
     dolar: DolarConf | None = None
@@ -379,6 +547,7 @@ def _config_completa():
         "stock_bajo": base.config("stock_bajo"),
         "casas": inventario.CASAS_DOLAR,
         "multiplicadores": base.config("multiplicadores"),
+        "alerta_precio": base.config("alerta_precio"),
         "grados": inventario.GRADOS,
         "pricecharting": bool(os.getenv("PRICECHARTING_TOKEN")),
         "dias": [{"clave": d, "nombre": base.NOMBRE_DIA[d]} for d in base.DIAS],
@@ -395,6 +564,14 @@ def guardar_config(datos: Configuracion):
     try:
         if datos.multiplicadores is not None:
             inventario.guardar_multiplicadores(datos.multiplicadores)
+        if datos.alerta_precio is not None:
+            if not 5 <= datos.alerta_precio <= 300:
+                raise ValueError("El aviso de diferencia de precio tiene que estar entre 5% y 300%.")
+            anterior = base.config("alerta_precio")
+            base.guardar_config("alerta_precio", datos.alerta_precio)
+            if datos.alerta_precio != anterior:
+                base.registrar_movimiento(
+                    "config", "Aviso de diferencia de precio actualizado", f"{anterior}% → {datos.alerta_precio:g}%")
         if datos.horarios is not None:
             anterior = base.horarios_texto()
             base.guardar_config("horarios", _validar_horarios(datos.horarios))

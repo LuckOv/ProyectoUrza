@@ -18,7 +18,7 @@ import os
 import re
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -271,6 +271,8 @@ def _enriquecer(filas, con) -> list:
     cotizacion = valor_dolar()
     general = float(base.config("descuento_general") or 0)
     umbral = int(base.config("stock_bajo") or 0)
+    umbral_precio = float(base.config("alerta_precio") or 30)
+    multiplicadores = base.config("multiplicadores") or {}
     por_carta = _descuentos_por_carta(con)
 
     resultado = []
@@ -284,6 +286,48 @@ def _enriquecer(filas, con) -> list:
             round(d["precio_usd"] * cotizacion * (1 - desc / 100)) if d["precio_usd"] else None
         )
         d["estado_stock"] = estado_stock(d["cantidad"], umbral)
+        # Dos avisos de precio, contra el precio de mercado de Scryfall de hoy:
+        #
+        # 1. "precio": TU precio está muy lejos del mercado actual (ej. cargaste
+        #    una carta carísima o regalada). Para las graduadas el mercado es una
+        #    estimación (Scryfall sin graduar × multiplicador del grado), así que
+        #    se avisa recién con el doble de diferencia.
+        # 2. "mercado": el mercado se movió mucho desde que pusiste tu precio;
+        #    se sugiere mover el tuyo en la misma proporción.
+        mercado, ref = d.get("precio_mercado_usd"), d.get("mercado_referencia_usd")
+        graduada = d["grado"] != "Sin graduar"
+        d["mercado_hoy_usd"] = (
+            round(mercado * float(multiplicadores.get(d["grado"], 1.0)), 2) if mercado and graduada
+            else mercado
+        )
+        d["mercado_estimado"] = bool(mercado and graduada)
+        if d["mercado_hoy_usd"] and d["precio_usd"]:
+            d["vs_mercado_pct"] = round((d["precio_usd"] / d["mercado_hoy_usd"] - 1) * 100, 1)
+        else:
+            d["vs_mercado_pct"] = None
+        if mercado and ref and d["precio_usd"]:
+            proporcion = mercado / ref
+            d["mercado_cambio_pct"] = round((proporcion - 1) * 100, 1)
+        else:
+            proporcion = None
+            d["mercado_cambio_pct"] = None
+
+        tope_precio = umbral_precio * (2 if graduada else 1)
+        aceptado = d.get("precio_aceptado_usd") is not None and d["precio_usd"] is not None \
+            and abs(d["precio_aceptado_usd"] - d["precio_usd"]) < 0.005
+        if not aceptado and d["vs_mercado_pct"] is not None and abs(d["vs_mercado_pct"]) >= tope_precio:
+            d["alerta_tipo"] = "precio"
+            d["alerta_pct"] = d["vs_mercado_pct"]
+            d["sugerido_usd"] = d["mercado_hoy_usd"]
+        elif d["mercado_cambio_pct"] is not None and abs(d["mercado_cambio_pct"]) >= umbral_precio:
+            d["alerta_tipo"] = "mercado"
+            d["alerta_pct"] = d["mercado_cambio_pct"]
+            d["sugerido_usd"] = round(d["precio_usd"] * proporcion, 2)
+        else:
+            d["alerta_tipo"] = None
+            d["alerta_pct"] = None
+            d["sugerido_usd"] = None
+        d["alerta_precio"] = d["alerta_tipo"] is not None
         d["legal_standard"] = bool(d["legal_standard"])
         resultado.append(d)
     return resultado
@@ -311,6 +355,22 @@ def obtener(item_id: int):
     with base.conectar() as con:
         fila = con.execute("SELECT * FROM inventario WHERE id = ?", (item_id,)).fetchone()
         return _enriquecer([fila], con)[0] if fila else None
+
+
+def mantener_precio(item_id: int):
+    """El vendedor deja su precio como está: no se avisa más por esta diferencia
+    (hasta que cambie el precio) y el mercado de hoy pasa a ser la referencia."""
+    with base.conectar() as con:
+        fila = con.execute("SELECT nombre, grado, precio_usd FROM inventario WHERE id = ?", (item_id,)).fetchone()
+        if not fila:
+            raise ValueError("Esa carta no está en el inventario.")
+        con.execute(
+            """UPDATE inventario SET precio_aceptado_usd = precio_usd,
+                      mercado_referencia_usd = COALESCE(precio_mercado_usd, mercado_referencia_usd)
+                WHERE id = ?""", (item_id,))
+    base.registrar_movimiento("edicion", f"Precio mantenido: {fila['nombre']} ({fila['grado']})",
+                   f"Se dejó en US$ {fila['precio_usd']:.2f} aunque está lejos del mercado")
+    return obtener(item_id)
 
 
 def variantes_de(nombre: str) -> list:
@@ -367,17 +427,21 @@ def alta(scryfall_id: str, grado: str = "Sin graduar", cantidad: int = 1,
         if existente:
             item_id = existente["id"]
             con.execute(
-                "UPDATE inventario SET cantidad = ?, precio_usd = COALESCE(?, precio_usd), actualizado = ? WHERE id = ?",
-                (existente["cantidad"] + cantidad, precio_usd, base.ahora_iso(), item_id),
+                """UPDATE inventario SET cantidad = ?, precio_usd = COALESCE(?, precio_usd),
+                          mercado_referencia_usd = CASE WHEN ? IS NULL THEN mercado_referencia_usd ELSE ? END,
+                          actualizado = ? WHERE id = ?""",
+                (existente["cantidad"] + cantidad, precio_usd, precio_usd, imp["precio_usd"], base.ahora_iso(), item_id),
             )
         else:
             cur = con.execute(
                 """INSERT INTO inventario (nombre, set_codigo, set_nombre, numero, rareza, imagen,
                                            scryfall_id, grado, precio_usd, cantidad, legal_standard,
+                                           colores, precio_mercado_usd, mercado_actualizado, mercado_referencia_usd,
                                            creado, actualizado)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (imp["nombre"], imp["set_codigo"], imp["set_nombre"], imp["numero"], imp["rareza"],
                  imp["imagen"], scryfall_id, grado, precio, cantidad, int(imp["legal_standard"]),
+                 imp["colores"], imp["precio_usd"], base.ahora_iso(), imp["precio_usd"],
                  base.ahora_iso(), base.ahora_iso()),
             )
             item_id = cur.lastrowid
@@ -431,12 +495,15 @@ def agregar_variante(item_id: int, grado: str, cantidad: int = 1,
             cur = con.execute(
                 """INSERT INTO inventario (nombre, set_codigo, set_nombre, numero, rareza, imagen,
                                            scryfall_id, grado, precio_usd, cantidad, legal_standard,
+                                           colores, precio_mercado_usd, mercado_actualizado, mercado_referencia_usd,
                                            creado, actualizado)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (origen["nombre"], origen["set_codigo"], origen["set_nombre"], origen["numero"],
                  origen["rareza"], origen["imagen"], origen["scryfall_id"], grado,
                  precio_usd if precio_usd is not None else origen["precio_usd"], cantidad,
-                 int(origen["legal_standard"]), base.ahora_iso(), base.ahora_iso()),
+                 int(origen["legal_standard"]), origen.get("colores"), origen.get("precio_mercado_usd"),
+                 origen.get("mercado_actualizado"), origen.get("precio_mercado_usd"),
+                 base.ahora_iso(), base.ahora_iso()),
             )
             nuevo_id = cur.lastrowid
         base.registrar_movimiento(
@@ -449,7 +516,8 @@ def agregar_variante(item_id: int, grado: str, cantidad: int = 1,
 def catalogo() -> list:
     """Lo que el jugador puede comprar: todas las variantes con stock y precio."""
     return [
-        {k: i[k] for k in ("id", "nombre", "set_nombre", "grado", "precio_ars", "cantidad", "imagen", "descuento")}
+        {k: i.get(k) for k in ("id", "nombre", "set_nombre", "set_codigo", "rareza", "grado", "precio_ars",
+                               "cantidad", "imagen", "descuento", "colores")}
         for i in listar()
         if i["cantidad"] > 0 and i["precio_ars"] is not None
     ]
@@ -474,6 +542,11 @@ def editar(item_id: int, grado: str | None = None, precio_usd: float | None = No
             "UPDATE inventario SET grado = ?, precio_usd = ?, cantidad = ?, actualizado = ? WHERE id = ?",
             (nuevo_grado, nuevo_precio, nueva_cantidad, base.ahora_iso(), item_id),
         )
+        if nuevo_precio != actual["precio_usd"]:
+            # Precio nuevo: desde acá se vuelve a medir cuánto se mueve el mercado.
+            con.execute(
+                "UPDATE inventario SET mercado_referencia_usd = precio_mercado_usd WHERE id = ?", (item_id,)
+            )
         diferencia = nueva_cantidad - actual["cantidad"]
         if diferencia:
             base.registrar_movimiento(
@@ -564,11 +637,56 @@ def completar_desde_scryfall():
             con.execute(
                 """UPDATE inventario
                       SET nombre = ?, set_codigo = ?, set_nombre = ?, numero = ?, rareza = ?, imagen = ?,
-                          scryfall_id = ?, precio_usd = COALESCE(precio_usd, ?), legal_standard = ?
+                          scryfall_id = ?, precio_usd = COALESCE(precio_usd, ?), legal_standard = ?,
+                          colores = ?, precio_mercado_usd = ?, mercado_actualizado = ?,
+                          mercado_referencia_usd = COALESCE(mercado_referencia_usd, ?)
                     WHERE id = ?""",
                 (imp["nombre"], imp["set_codigo"], imp["set_nombre"], imp["numero"], imp["rareza"],
-                 imp["imagen"], imp["scryfall_id"], imp["precio_usd"], int(imp["legal_standard"]), f["id"]),
+                 imp["imagen"], imp["scryfall_id"], imp["precio_usd"], int(imp["legal_standard"]),
+                 imp["colores"], imp["precio_usd"], base.ahora_iso(), imp["precio_usd"], f["id"]),
             )
+    # Las filas que ya tenían Scryfall pero no colores o precio de mercado
+    # (bases de versiones anteriores) se completan en lote.
+    refrescar_mercado(forzar=False)
+
+
+_ultimo_refresco = {"cuando": 0.0}
+HORAS_MERCADO = 6
+
+
+def refrescar_mercado(forzar: bool = False) -> int:
+    """Trae de Scryfall el precio de mercado (y los colores) de todo el inventario.
+
+    Se hace en lote (75 cartas por pedido) y como mucho cada 6 horas, salvo
+    que se fuerce. Devuelve cuántas filas actualizó.
+    """
+    if not forzar and time.time() - _ultimo_refresco["cuando"] < 300:
+        return 0
+    _ultimo_refresco["cuando"] = time.time()
+    limite = (base.ahora() - timedelta(hours=HORAS_MERCADO)).isoformat()
+    with base.conectar() as con:
+        filas = con.execute(
+            """SELECT id, scryfall_id FROM inventario
+                WHERE scryfall_id IS NOT NULL
+                  AND (? OR colores IS NULL OR mercado_actualizado IS NULL OR mercado_actualizado < ?)""",
+            (int(forzar), limite),
+        ).fetchall()
+    if not filas:
+        return 0
+    datos = cartas.precios_actuales([f["scryfall_id"] for f in filas])
+    actualizadas = 0
+    with base.conectar() as con:
+        for f in filas:
+            d = datos.get(f["scryfall_id"])
+            if not d:
+                continue
+            con.execute(
+                """UPDATE inventario SET colores = ?, precio_mercado_usd = ?, mercado_actualizado = ?,
+                          mercado_referencia_usd = COALESCE(mercado_referencia_usd, ?) WHERE id = ?""",
+                (d["colores"], d["precio_usd"], base.ahora_iso(), d["precio_usd"], f["id"]),
+            )
+            actualizadas += 1
+    return actualizadas
 
 
 def completar_en_segundo_plano():

@@ -216,6 +216,41 @@ def sugerir_cartas_mazo(colores: str = "", formato: str = "standard", tipo: str 
     return texto, elegidas
 
 
+# --- propuestas (el jugador le ofrece una carta a la tienda) ------------------------
+
+@tool(response_format="content_and_artifact")
+def iniciar_propuesta(carta: str = "", grado: str = "", precio: float | None = None, moneda: str = "ARS",
+                      cantidad: int = 1, nombre: str = "", apellido: str = "", email: str = ""):
+    """Abre en el chat el formulario para que el jugador le OFREZCA una carta a la tienda.
+
+    Usar cuando el jugador quiere vender una carta ("tengo X PSA 9, la vendo a $Y").
+    Pasá lo que ya dijo (todo es opcional): carta, grado ("Sin graduar", "PSA 10"...),
+    precio, moneda ("ARS" o "USD"), cantidad, nombre, apellido y email. El
+    formulario tiene la lista de todas las cartas que existen para elegir la exacta,
+    y exige nombre, apellido y mail. La propuesta se envía cuando el jugador
+    aprieta "Enviar propuesta" en el formulario, no antes.
+    """
+    grado_ok = grado if grado in inventario.GRADOS else ""
+    if not grado_ok and grado:
+        numero = "".join(c for c in str(grado) if c.isdigit())
+        grado_ok = f"PSA {numero}" if numero and f"PSA {numero}" in inventario.GRADOS else ""
+    datos = {
+        "carta": str(carta or "").strip(), "grado": grado_ok or "Sin graduar",
+        "precio": float(precio) if precio else None, "moneda": "USD" if str(moneda).upper() == "USD" else "ARS",
+        "cantidad": max(1, int(cantidad or 1)), "nombre": nombre.strip(), "apellido": apellido.strip(),
+        "email": email.strip(),
+    }
+    faltan = [c for c in ("nombre", "apellido", "email") if not datos[c]]
+    texto = (
+        "Abrí el formulario de propuesta en el chat"
+        + (f" con la búsqueda '{datos['carta']}'" if datos["carta"] else "")
+        + ". Pedile al jugador que elija la carta exacta en la lista de Scryfall para mayor precisión"
+        + (f" y que complete {', '.join('mail' if c == 'email' else c for c in faltan)} (obligatorios)" if faltan else "")
+        + ". La propuesta se envía cuando aprieta 'Enviar propuesta'; la tienda la revisa y le responde por mail (hablá en primera persona del plural: \"te respondemos por mail\")."
+    )
+    return texto, datos
+
+
 # --- compra --------------------------------------------------------------------
 #
 # El carrito es de la conversación. LangGraph le pasa a cada herramienta la
@@ -337,6 +372,7 @@ lista_tools = [
     consultar_lore_mtg,
     listar_cartas_disponibles,
     sugerir_cartas_mazo,
+    iniciar_propuesta,
     agregar_al_carrito,
     ver_carrito,
     quitar_del_carrito,

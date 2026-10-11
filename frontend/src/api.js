@@ -36,3 +36,7 @@ export const preguntar = (thread_id, texto) =>
   pedir("/chat", { metodo: "POST", cuerpo: { thread_id, texto } });
 
 export const catalogo = () => pedir("/catalogo");
+
+export const autocompletarCartas = (q) => pedir(`/cartas/autocompletar?q=${encodeURIComponent(q)}`);
+export const impresionesCartas = (nombre) => pedir(`/cartas/impresiones?nombre=${encodeURIComponent(nombre)}`);
+export const enviarPropuesta = (datos) => pedir("/propuestas", { metodo: "POST", cuerpo: datos });

@@ -12,6 +12,12 @@
 - **Comprar desde el chat**: le decís qué cartas querés, Urza las va sumando al carrito y te pregunta si querés algo más o cerrar la compra. Al cerrar te pide nombre, apellido y qué día y a qué hora pasás a retirar (dentro del horario del local). No hace falta crear cuenta.
 - **Resolver dudas del juego**: "¿Puedo responder con un instante antes de que mi criatura muera?" → te contesta con base en las reglas oficiales y te cita la regla.
 
+- **Contarte el lore** de planos y personajes, y **armarte un mazo** con lo que hay en la tienda (las cartas aparecen en abanico).
+- **Ver todas las cartas** de la tienda con filtros por color, PSA, precio y expansión.
+- **Ofrecerle una carta a la tienda**: "tengo una X en PSA 9 a tanto" → se abre un formulario para elegir la carta exacta y dejar nombre, apellido y mail.
+
+Detrás hay un equipo: **Urza** orquesta y consulta a **Tibalt** (vendedor), **Ajani** (juez de reglas), **Teferi** (lore) y **Saheeli** (armado de mazos).
+
 URZA habla en español (de Argentina, como un vendedor de barrio).
 
 ## Panel del vendedor (Mesa Central)
@@ -20,15 +26,14 @@ En `http://localhost:5173/vendedor.html`, con la clave de vendedor:
 
 - **Inventario**: todas las cartas con foto, grado (PSA), precio y stock. Para agregar una, la buscás en Scryfall, elegís la impresión y cargás cuántas tenés.
 - **Pedidos**: calendario con los retiros de cada día; marcás un pedido como entregado o rechazado (si se rechaza, las cartas vuelven al stock).
-- **Dashboard**: cuánto stock hay, cuánto vale, pedidos abiertos, actividad reciente.
+- **Propuestas**: las cartas que los clientes le ofrecen a la tienda desde el chat (con nombre, apellido y mail), para aceptarlas, cargarlas al stock o rechazarlas.
+- **Dashboard**: cuánto stock hay, cuánto vale, pedidos abiertos, ventas del mes, color / cartas / expansiones más vendidas y alertas de cambios bruscos de precio y stock.
 - **Historial**: el protocolo de todos los pedidos, con tus comentarios, exportable a CSV.
 - **Configuración**: horarios del local, precio del dólar (automático o manual) y descuentos.
 
 ## Lo que viene (en camino)
 
-- **Un agente de historia**: preguntar por el lore de MTG (planos, personajes, trasfondo de las cartas).
 - **Alta de stock por chat para el vendedor** (desde el panel ya se puede).
-- **Armador de mazos**: recomendaciones para construir un mazo, usando cartas que la tienda ya tiene en stock.
 - **Reconocimiento de fotos (a futuro)**: sacar o enviar una foto de una carta. Los jugadores podrán preguntar si hay stock; el vendedor podrá cargarla al stock directamente desde la foto.
 
 ---

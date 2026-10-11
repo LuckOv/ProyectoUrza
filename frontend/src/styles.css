@@ -236,6 +236,27 @@ body {
 .toggle { cursor: var(--flecha); cursor: var(--flecha-hd); }
 .toggle input { accent-color: var(--rivet); }
 
+.pie-chat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.ofrecer-carta {
+  margin-top: 12px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(212, 175, 110, 0.5);
+  background: rgba(28, 15, 8, 0.7);
+  color: var(--crema);
+  font-family: var(--titulo);
+  font-size: 0.85rem;
+  cursor: var(--flecha);
+}
+.ofrecer-carta:hover:not(:disabled) { background: rgba(28, 15, 8, 0.92); border-color: var(--oro); }
+.ofrecer-carta:disabled { opacity: 0.5; }
+
 @media (prefers-reduced-motion: reduce) {
   .bolitas { display: none; }
   .puntos::after { animation: none; content: "..."; }
@@ -410,11 +431,10 @@ body {
 .carta3d-grupo { align-self: flex-start; max-width: 100%; margin: 10px 0 14px; }
 .carta3d-variantes {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   margin-top: 10px;
   padding: 12px 4px 6px;
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 .carta3d-variante {
   flex: 0 0 auto;
@@ -448,14 +468,16 @@ body {
 .abanico {
   --ancho: 112px;
   position: relative;
-  align-self: flex-start;
-  width: min(100%, calc(var(--ancho) * 0.42 * var(--cartas) + var(--ancho) * 1.3));
-  height: calc(var(--ancho) * 1.4 + 70px);
-  margin: 10px 0 18px;
+  width: 100%;
+  max-width: 100%;
+  margin: 10px 0 14px;
+  /* Recorta a los costados (por si algún navegador redondea distinto) pero deja
+     que la carta suba al pasar el cursor. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 .abanico-carta {
   position: absolute;
-  bottom: 18px;
   left: 50%;
   width: var(--ancho);
   aspect-ratio: 5 / 7;
@@ -463,12 +485,12 @@ body {
   border-radius: 7px;
   box-shadow: 0 6px 14px rgba(12, 6, 2, 0.55);
   transform-origin: 50% 120%;
-  transform: translateX(calc(var(--pos) * var(--ancho) * 0.42)) translateY(var(--caida)) rotate(var(--giro));
+  transform: translateX(var(--x)) translateY(var(--caida)) rotate(var(--giro));
   transition: transform 0.22s ease-out, box-shadow 0.22s ease-out;
   outline: none;
 }
 .abanico-carta.activa {
-  transform: translateX(calc(var(--pos) * var(--ancho) * 0.42)) translateY(calc(var(--caida) - 26px)) rotate(var(--giro)) scale(1.12);
+  transform: translateX(var(--x)) translateY(calc(var(--caida) - 22px)) rotate(var(--giro)) scale(1.08);
   box-shadow: 0 18px 34px rgba(12, 6, 2, 0.7), 0 0 0 2px var(--oro);
 }
 .abanico-carta img, .abanico-sinimagen {
@@ -504,6 +526,9 @@ body {
   white-space: nowrap;
   pointer-events: none;
 }
+/* En las puntas el nombre se corre hacia adentro para no salirse del chat. */
+.abanico-nombre.izq { left: 0; transform: rotate(calc(var(--giro) * -1)); transform-origin: left bottom; }
+.abanico-nombre.der { left: auto; right: 0; transform: rotate(calc(var(--giro) * -1)); transform-origin: right bottom; }
 
 /* --- catálogo --- */
 
@@ -534,6 +559,128 @@ body {
 }
 .catalogo-buscar input:focus { outline: none; box-shadow: 0 0 0 2px #8c6a3f; }
 .catalogo-cuenta { margin: 8px 20px 0; font-size: 0.82rem; color: #6b5335; }
+
+/* --- quién respondió --- */
+
+.quien {
+  align-self: flex-start;
+  margin: 8px 0 -2px 4px;
+  font-size: 0.78rem;
+  color: var(--crema-apagada);
+  text-shadow: 0 1px 4px rgba(20, 10, 4, 0.8);
+}
+.quien strong { font-family: var(--titulo); font-weight: 400; font-size: 0.92rem; color: var(--crema); }
+
+/* --- filtros del catálogo --- */
+
+.catalogo-buscar { display: flex; gap: 8px; }
+.catalogo-filtros-boton {
+  flex: 0 0 auto; padding: 0 12px; border-radius: 6px; border: 1px solid #6b4a2e;
+  background: #f7eedc; color: #2e211a; font-family: var(--titulo); font-size: 0.92rem;
+  cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.catalogo-filtros-boton.activo { background: #4a3222; color: #f1e4ca; }
+.catalogo-filtros { display: flex; flex-direction: column; gap: 10px; margin: 10px 20px 0; padding: 12px; border: 1px solid #b79e77; border-radius: 8px; background: #efe0c2; }
+.catalogo-colores { display: flex; flex-wrap: wrap; gap: 6px; }
+.color-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 4px;
+  border-radius: 999px; border: 1px solid #b79e77; background: #f7eedc; color: #2e211a;
+  font-family: inherit; font-size: 0.8rem; cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.color-chip img { width: 20px; height: 20px; }
+.color-chip.elegido { background: #4a3222; color: #f1e4ca; border-color: #4a3222; }
+.color-letra { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 0.75rem; }
+.color-letra.M { background: linear-gradient(135deg, #e3c35a, #c08a1e); color: #2a1206; }
+.color-letra.C { background: #b7b2a8; color: #2a1206; }
+.catalogo-fila { display: flex; gap: 10px; }
+.catalogo-fila label { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: #6b5335; font-weight: 600; min-width: 0; }
+.catalogo-fila select, .catalogo-fila input[type="number"] {
+  padding: 6px 8px; border: 1px solid #6b4a2e; border-radius: 6px; background: #f7eedc; color: #2e211a;
+  font-family: inherit; font-size: 0.88rem; min-width: 0;
+}
+.catalogo-check { flex-direction: row !important; align-items: center; gap: 6px !important; align-self: flex-end; padding-bottom: 6px; }
+.catalogo-limpiar { align-self: flex-start; background: none; border: 0; padding: 0; color: #8c3a12; text-decoration: underline; font-family: inherit; font-size: 0.84rem; cursor: var(--flecha); cursor: var(--flecha-hd); }
+
+/* --- formulario de propuesta (el cliente ofrece una carta) --- */
+
+.propuesta {
+  align-self: flex-start;
+  width: min(560px, 100%);
+  margin: 6px 0 12px;
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 10px;
+  background: rgba(239, 226, 198, 0.97);
+  border: 1px solid #8c6a3f;
+  border-radius: 12px;
+  color: #2e211a;
+  box-shadow: 0 10px 26px rgba(12, 6, 2, 0.45);
+}
+.propuesta h3 { margin: 0; font-family: var(--titulo); font-weight: 400; font-size: 1.25rem; }
+.propuesta p { margin: 0; }
+.propuesta-ayuda { font-size: 0.82rem; color: #6b5335; }
+.propuesta input, .propuesta select {
+  width: 100%; padding: 8px 10px; border: 1px solid #6b4a2e; border-radius: 6px;
+  background: #f7eedc; color: #2e211a; font-family: inherit; font-size: 0.92rem; min-width: 0;
+}
+.propuesta input:focus, .propuesta select:focus { outline: none; box-shadow: 0 0 0 2px #8c6a3f; }
+.propuesta-buscar { position: relative; }
+.propuesta-buscador {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 10px; border: 1px solid #8c6a3f; border-radius: 8px; background: #fbf5e8; color: #6b5335;
+}
+.propuesta-buscador:focus-within { box-shadow: 0 0 0 2px #8c6a3f; }
+.propuesta .propuesta-buscador input { flex: 1; border: 0; background: none; padding: 9px 0; box-shadow: none; min-width: 0; }
+.propuesta-girando {
+  width: 15px; height: 15px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid #c9b48e; border-top-color: #d9722e; animation: propuesta-girar 0.8s linear infinite;
+}
+@keyframes propuesta-girar { to { transform: rotate(360deg); } }
+.propuesta-sugerencias {
+  list-style: none; margin: 6px 0 0; padding: 4px; max-height: 290px; overflow-y: auto;
+  background: #fbf5e8; border: 1px solid #8c6a3f; border-radius: 8px;
+}
+.propuesta-sugerencias button {
+  width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 5px;
+  background: none; color: #2e211a; font: inherit; cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.propuesta-sugerencias button:hover, .propuesta-sugerencias button.resaltada { background: #f1dfbd; }
+.propuesta-paso-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.propuesta-paso-cabeza h4 { margin: 0; font-family: var(--titulo); font-weight: 400; font-size: 1.05rem; color: #2e211a; }
+.propuesta .propuesta-filtro { width: 150px; padding: 5px 9px; font-size: 0.85rem; }
+.propuesta-impresiones {
+  list-style: none; margin: 0; padding: 2px; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 9px; max-height: 330px; overflow-y: auto;
+}
+.propuesta-impresiones button {
+  width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 6px; text-align: left;
+  border: 2px solid transparent; border-radius: 9px; background: #f7eedc; color: #2e211a; font: inherit;
+  cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.propuesta-impresiones button:hover { border-color: #c9b48e; }
+.propuesta-impresiones button.elegida { border-color: #d9722e; box-shadow: 0 0 0 2px rgba(217, 114, 46, 0.3); }
+.propuesta-impresiones img, .propuesta-sinimg { width: 100%; aspect-ratio: 488 / 680; object-fit: cover; border-radius: 6px; }
+.propuesta-sinimg { display: grid; place-items: center; padding: 6px; background: #e6d6b5; font-size: 0.75rem; text-align: center; }
+.propuesta-set { font-size: 0.72rem; color: #6b5335; font-weight: 600; margin-top: 3px; }
+.propuesta-set-nombre { font-size: 0.78rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.propuesta-mercado { font-size: 0.78rem; font-weight: 600; }
+.propuesta-elegida { font-size: 0.88rem; color: #2f6b35; font-weight: 600; }
+.propuesta-fila { display: flex; gap: 10px; }
+.propuesta-fila > label, .propuesta-campo { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.propuesta label > span { font-size: 0.8rem; color: #6b5335; font-weight: 600; }
+.propuesta-precio { display: flex; gap: 4px; }
+.propuesta-precio select { width: 72px; flex: 0 0 auto; }
+.propuesta-error { color: #8c2216; font-size: 0.88rem; }
+.propuesta-enviar {
+  align-self: flex-start; padding: 10px 20px; border: 0; border-radius: 20px;
+  background: var(--rivet); color: #2a1206; font-family: var(--titulo); font-size: 1rem;
+  cursor: var(--flecha); cursor: var(--flecha-hd);
+}
+.propuesta-enviar:disabled { opacity: 0.6; }
+.propuesta.enviada { border-color: #5d8a52; }
+
+@media (max-width: 640px) {
+  .propuesta-fila, .catalogo-fila { flex-direction: column; }
+}
 
 /* --- paneles --- */
 
@@ -665,7 +812,6 @@ body {
 @media (max-width: 640px) {
   .carta3d { flex-direction: column; align-items: flex-start; gap: 10px; }
   .carta3d-marco { width: 140px; }
-  .abanico { --ancho: 76px; }
   .carta3d-variante { width: 112px; }
   .carta3d-variante .carta3d-marco { width: 104px; }
   .barra-superior { top: 10px; right: 14px; }

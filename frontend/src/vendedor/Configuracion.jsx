@@ -127,6 +127,7 @@ export default function Configuracion() {
   const [dolar, setDolar] = useState(null);
   const [stockBajo, setStockBajo] = useState(2);
   const [multiplicadores, setMultiplicadores] = useState({});
+  const [alertaPrecio, setAlertaPrecio] = useState(30);
   const [descuentos, setDescuentos] = useState(null);
   const [panel, setPanel] = useState(false);
   const [ocupado, setOcupado] = useState("");
@@ -139,6 +140,7 @@ export default function Configuracion() {
     setDolar({ modo: c.dolar.modo, casa: c.dolar.casa, valor: c.dolar.valor });
     setStockBajo(c.stock_bajo);
     setMultiplicadores(c.multiplicadores || {});
+    setAlertaPrecio(c.alerta_precio ?? 30);
   };
 
   useEffect(() => {
@@ -288,6 +290,32 @@ export default function Configuracion() {
             </label>
             <button className="boton primario" disabled={ocupado === "stock"}
                     onClick={() => guardar("stock", { stock_bajo: Number(stockBajo) }, "Umbral de stock bajo guardado.")}>
+              Guardar
+            </button>
+          </div>
+        </section>
+
+        {/* Aviso de precio desactualizado */}
+        <section className="bloque">
+          <div className="bloque-cabeza">
+            <div>
+              <h3>Aviso de precio desactualizado</h3>
+              <p className="ayuda">
+                Una carta aparece arriba del Inventario (y en las alertas del Dashboard) cuando su precio
+                de mercado en Scryfall se movió este porcentaje o más desde que le pusiste precio.
+              </p>
+            </div>
+          </div>
+          <div className="fila-campos al-pie">
+            <label className="campo">
+              <span>Diferencia</span>
+              <div className="con-sufijo">
+                <input type="number" min="5" max="300" value={alertaPrecio} onChange={(e) => setAlertaPrecio(e.target.value)} />
+                <span>%</span>
+              </div>
+            </label>
+            <button className="boton primario" disabled={ocupado === "alerta"}
+                    onClick={() => guardar("alerta", { alerta_precio: Number(alertaPrecio) }, "Aviso de precio guardado.")}>
               Guardar
             </button>
           </div>

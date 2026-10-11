@@ -63,25 +63,7 @@ function PorDia({ dias }) {
   );
 }
 
-function PorCarta({ cartas }) {
-  const maximo = Math.max(...cartas.map((c) => c.unidades), 1);
-  return (
-    <ul className="barras-h">
-      {cartas.map((c) => (
-        <li key={c.nombre} title={`${c.nombre}: ${c.unidades} vendidas · ${pesos(c.total)}`}>
-          <span className="barras-h-nombre">{c.nombre}</span>
-          <span className="barras-h-pista">
-            <span className="barras-h-barra" style={{ width: `${Math.max(2, (c.unidades / maximo) * 100)}%` }} />
-          </span>
-          <span className="barras-h-valor">{c.unidades} u. · {pesos(c.total)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-export default function GraficoVentas({ dias, cartas }) {
-  const [vista, setVista] = useState("dia");
+export default function GraficoVentas({ dias }) {
   const [tabla, setTabla] = useState(false);
   const total = dias.reduce((s, d) => s + d.total, 0);
   const unidades = dias.reduce((s, d) => s + d.unidades, 0);
@@ -97,12 +79,6 @@ export default function GraficoVentas({ dias, cartas }) {
           </p>
         </div>
         <div className="ventas-controles">
-          <div className="segmentado" role="radiogroup" aria-label="Agrupar ventas">
-            {[["dia", "Por día"], ["carta", "Por carta"]].map(([v, t]) => (
-              <button key={v} role="radio" aria-checked={vista === v} className={vista === v ? "activo" : ""}
-                      onClick={() => setVista(v)}>{t}</button>
-            ))}
-          </div>
           <button className="enlace chico" onClick={() => setTabla((t) => !t)}>
             {tabla ? "Ver gráfico" : "Ver como tabla"}
           </button>
@@ -114,20 +90,15 @@ export default function GraficoVentas({ dias, cartas }) {
       ) : tabla ? (
         <table className="tabla-chica">
           <thead>
-            {vista === "dia"
-              ? <tr><th>Día</th><th className="num">Pedidos</th><th className="num">Cartas</th><th className="num">Total</th></tr>
-              : <tr><th>Carta</th><th className="num">Vendidas</th><th className="num">Total</th></tr>}
+            <tr><th>Día</th><th className="num">Pedidos</th><th className="num">Cartas</th><th className="num">Total</th></tr>
           </thead>
           <tbody>
-            {vista === "dia"
-              ? dias.filter((d) => d.total > 0).map((d) => (
-                <tr key={d.fecha}><td>{d.fecha.split("-").reverse().join("/")}</td><td className="num">{d.pedidos}</td>
-                  <td className="num">{d.unidades}</td><td className="num">{pesos(d.total)}</td></tr>))
-              : cartas.map((c) => (
-                <tr key={c.nombre}><td>{c.nombre}</td><td className="num">{c.unidades}</td><td className="num">{pesos(c.total)}</td></tr>))}
+            {dias.filter((d) => d.total > 0).map((d) => (
+              <tr key={d.fecha}><td>{d.fecha.split("-").reverse().join("/")}</td><td className="num">{d.pedidos}</td>
+                <td className="num">{d.unidades}</td><td className="num">{pesos(d.total)}</td></tr>))}
           </tbody>
         </table>
-      ) : vista === "dia" ? <PorDia dias={dias} /> : <PorCarta cartas={cartas} />}
+      ) : <PorDia dias={dias} />}
     </div>
   );
 }

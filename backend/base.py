@@ -45,6 +45,9 @@ CONFIG_INICIAL = {
     # y se refresca solo si tiene más de una hora.
     "dolar": {"modo": "auto", "casa": "blue", "valor": 1000.0, "actualizado": None},
     "stock_bajo": 2,
+    # Cuánto (en %) tiene que moverse el precio de mercado de una carta desde
+    # que el vendedor le puso precio para que aparezca arriba del inventario.
+    "alerta_precio": 30,
     "descuento_general": 0.0,
     # Cuánto vale una carta graduada respecto de la misma sin graduar, para
     # sugerir el precio cuando no hay token de PriceCharting. Son valores de
@@ -69,6 +72,12 @@ def conectar():
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     return con
+
+
+def _agregar_columna(con, tabla: str, columna: str, tipo: str):
+    columnas = [f["name"] for f in con.execute(f"PRAGMA table_info({tabla})").fetchall()]
+    if columna not in columnas:
+        con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}")
 
 
 def preparar():
@@ -163,7 +172,43 @@ def preparar():
                 clave  TEXT PRIMARY KEY,
                 valor  TEXT NOT NULL
             );
+
+            -- Cartas que un cliente le ofrece a la tienda desde el chat.
+            CREATE TABLE IF NOT EXISTS propuestas (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id            TEXT,
+                nombre               TEXT NOT NULL,
+                apellido             TEXT NOT NULL,
+                email                TEXT NOT NULL,
+                carta                TEXT NOT NULL,
+                scryfall_id          TEXT,
+                set_nombre           TEXT,
+                numero               TEXT,
+                imagen               TEXT,
+                grado                TEXT NOT NULL,
+                cantidad             INTEGER NOT NULL DEFAULT 1,
+                precio               REAL NOT NULL,
+                moneda               TEXT NOT NULL DEFAULT 'ARS',
+                comentario_cliente   TEXT NOT NULL DEFAULT '',
+                estado               TEXT NOT NULL DEFAULT 'nueva',
+                comentario_vendedor  TEXT NOT NULL DEFAULT '',
+                creado               TEXT NOT NULL,
+                actualizado          TEXT NOT NULL
+            );
         """)
+
+        # Columnas que se sumaron después: se agregan a las bases ya creadas.
+        _agregar_columna(con, "inventario", "colores", "TEXT")                 # "WU", "" = incolora
+        _agregar_columna(con, "inventario", "precio_mercado_usd", "REAL")      # último precio de Scryfall
+        _agregar_columna(con, "inventario", "mercado_actualizado", "TEXT")
+        # Precio de mercado cuando el vendedor fijó su precio: contra eso se mide
+        # si el mercado se movió mucho desde entonces.
+        _agregar_columna(con, "inventario", "mercado_referencia_usd", "REAL")
+        # Precio que el vendedor decidió mantener aunque esté lejos del mercado
+        # ("Dejarlo así"): mientras no lo cambie, no se vuelve a avisar.
+        _agregar_columna(con, "inventario", "precio_aceptado_usd", "REAL")
+        _agregar_columna(con, "pedido_items", "colores", "TEXT")
+        _agregar_columna(con, "pedido_items", "set_codigo", "TEXT")
         con.execute(f"PRAGMA user_version = {VERSION_ESQUEMA}")
 
         for clave, valor in CONFIG_INICIAL.items():

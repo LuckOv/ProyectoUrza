@@ -79,6 +79,14 @@ export const TIPOS_MOVIMIENTO = {
   edicion: { texto: "Edición", tono: "neutro" },
   baja: { texto: "Baja", tono: "estado-rechazada" },
   config: { texto: "Configuración", tono: "neutro" },
+  propuesta: { texto: "Propuesta", tono: "estado-realizada" },
+};
+
+export const ESTADOS_PROPUESTA = {
+  nueva: { texto: "Nueva", tono: "estado-pendiente" },
+  en_revision: { texto: "En revisión", tono: "grado" },
+  aceptada: { texto: "Aceptada", tono: "stock-ok" },
+  rechazada: { texto: "Rechazada", tono: "estado-rechazada" },
 };
 
 // --- precio sugerido por grado -------------------------------------------------
@@ -215,4 +223,26 @@ export function Icono({ nombre, tam = 16 }) {
       {TRAZOS[nombre]}
     </svg>
   );
+}
+
+/* Qué dice cada aviso de precio. "precio": tu precio está lejos del mercado de
+   hoy. "mercado": el mercado se movió mucho desde que pusiste tu precio. */
+export function textoAlerta(i) {
+  const pct = Math.abs(i.alerta_pct).toFixed(0);
+  if (i.alerta_tipo === "precio") {
+    return {
+      etiqueta: `Tu precio ${i.alerta_pct > 0 ? "▲" : "▼"} ${pct}% ${i.alerta_pct > 0 ? "arriba" : "abajo"}`,
+      tono: i.alerta_pct > 0 ? "estado-pendiente" : "estado-rechazada",
+      detalle: `Mercado hoy${i.mercado_estimado ? ` (estimado ${i.grado})` : ""}`,
+      desde: null,
+      hasta: i.mercado_hoy_usd,
+    };
+  }
+  return {
+    etiqueta: `Mercado ${i.alerta_pct > 0 ? "▲ subió" : "▼ bajó"} ${pct}%`,
+    tono: i.alerta_pct > 0 ? "stock-ok" : "estado-rechazada",
+    detalle: "Mercado",
+    desde: i.mercado_referencia_usd,
+    hasta: i.precio_mercado_usd,
+  };
 }

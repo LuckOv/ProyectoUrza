@@ -933,6 +933,85 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
 .tabla-chica td { padding: 6px 8px; border-bottom: 1px solid #e0cfac; }
 .tabla-chica .num { text-align: right; }
 
+/* --- dashboard: movimientos de cartas y alertas --------------------------------------- */
+
+.movimientos-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 6px 0 12px; }
+.movimientos-cabeza h2 { margin: 0; font-family: var(--titulo); font-weight: 400; font-size: 1.5rem; text-shadow: 0 2px 8px rgba(20, 10, 4, 0.7); }
+.tres-columnas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 2px; }
+.tres-columnas .barras-h li { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+.tres-columnas .barras-h-valor { text-align: left; }
+
+.torta { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.torta svg { width: 170px; height: 170px; }
+.torta path { transition: opacity 0.15s; }
+.torta-centro-num { font-family: "Spectral", serif; font-weight: 600; font-size: 22px; fill: var(--tinta); }
+.torta-centro-txt { font-family: "Spectral", serif; font-size: 11px; fill: var(--tinta-suave); }
+.torta-leyenda { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 4px; }
+.torta-leyenda li { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center; font-size: 0.86rem; padding: 2px 4px; border-radius: 4px; }
+.torta-leyenda li.activa { background: rgba(255, 248, 234, 0.8); }
+.torta-muestra { width: 12px; height: 12px; border-radius: 3px; }
+.torta-valor { color: var(--tinta-suave); font-size: 0.82rem; }
+
+.ranking { list-style: none; margin: 0; padding: 0; counter-reset: none; }
+.ranking li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid #d9c7a4; font-size: 0.9rem; }
+.ranking li:first-child { border-top: 0; }
+.ranking-pos { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--pergamino-hondo); font-size: 0.76rem; font-weight: 600; }
+.ranking li:first-child .ranking-pos { background: var(--oro); }
+.ranking-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ranking-valor { font-size: 0.82rem; color: var(--tinta-suave); white-space: nowrap; }
+
+.alertas-inv.con-alertas { border-color: #d6a35a; box-shadow: 0 0 0 2px rgba(214, 163, 90, 0.3), var(--sombra); }
+.alerta-global { margin: 0 0 8px; padding: 8px 12px; border-radius: 7px; background: #f6e3b4; color: #6b4206; font-size: 0.9rem; }
+.alertas-sub { margin: 10px 0 4px; font-size: 0.86rem; font-weight: 600; color: var(--tinta-suave); }
+.alertas-mini { list-style: none; margin: 0; padding: 0; }
+.alertas-mini li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 6px 0; border-top: 1px solid #d9c7a4; font-size: 0.88rem; }
+.alertas-mini-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 1080px) { .tres-columnas { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .alertas-mini li { grid-template-columns: minmax(0, 1fr) auto; } .alertas-mini li > .apagado { display: none; } }
+
+/* --- precios a revisar (inventario) ------------------------------------------------- */
+
+.alertas-precio { border-color: #d6a35a; box-shadow: 0 0 0 2px rgba(214, 163, 90, 0.35), var(--sombra); }
+.alertas-lista { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.alertas-lista li {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto auto; gap: 12px; align-items: center;
+  padding: 8px 0; border-top: 1px solid #d9c7a4; font-size: 0.9rem;
+}
+.alertas-lista img, .alertas-lista .mini-sinimg { width: 36px; height: 50px; border-radius: 3px; object-fit: cover; }
+.alertas-datos { display: flex; flex-direction: column; min-width: 0; }
+.alertas-datos strong, .alertas-datos span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alertas-precios { display: flex; flex-direction: column; font-size: 0.84rem; text-align: right; }
+.alertas-botones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 760px) {
+  .alertas-lista li { grid-template-columns: 36px minmax(0, 1fr); }
+  .alertas-precios { text-align: left; }
+}
+
+/* --- propuestas --------------------------------------------------------------------- */
+
+.globito {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px;
+  border-radius: 9px; background: var(--rivet); color: #2a1206; font-family: "Spectral", serif; font-size: 0.72rem; font-weight: 600;
+}
+.lista-propuestas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.propuesta-v { display: flex; gap: 18px; margin-bottom: 0; }
+.propuesta-v-img { width: 130px; border-radius: 8px; box-shadow: var(--sombra); align-self: flex-start; flex-shrink: 0; }
+.propuesta-v-img.vacia { height: 180px; background: var(--pergamino-hondo); }
+.propuesta-v-datos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.propuesta-v-datos p { margin: 0; }
+.propuesta-v-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.propuesta-v-cabeza h3 { margin: 0; font-family: var(--titulo); font-weight: 400; font-size: 1.3rem; }
+.propuesta-v-oferta { display: flex; align-items: center; gap: 10px; font-size: 1.02rem; }
+.propuesta-v-datos a { color: var(--rivet-oscuro); }
+.propuesta-nota { font-size: 0.88rem; padding: 6px 8px; background: rgba(247, 238, 220, 0.7); }
+.propuesta-v-acciones { display: flex; flex-wrap: wrap; gap: 6px; }
+a.boton { text-decoration: none; }
+@media (max-width: 640px) {
+  .propuesta-v { flex-direction: column; }
+  .propuesta-v-img { width: 110px; }
+}
+
 /* --- modal y avisos ------------------------------------------------------------ */
 
 .velo {

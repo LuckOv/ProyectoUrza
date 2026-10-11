@@ -231,6 +231,43 @@ def buscar(nombre: str):
 
 # --- para el panel del vendedor ---------------------------------------------
 
+def colores_de(datos: dict) -> str:
+    """Colores de una carta en letras WUBRG ("" = incolora), sumando las dos caras."""
+    colores = set(datos.get("colors") or [])
+    for cara in datos.get("card_faces") or []:
+        colores |= set(cara.get("colors") or [])
+    if not colores and datos.get("colors") is None and not datos.get("card_faces"):
+        colores = set(datos.get("color_identity") or [])
+    return "".join(c for c in "WUBRG" if c in colores)
+
+
+def precios_actuales(scryfall_ids: list) -> dict:
+    """Precio de mercado (US$) y colores de muchas cartas, de a 75 por pedido.
+
+    Usa /cards/collection de Scryfall, que acepta hasta 75 ids por llamada.
+    Devuelve {scryfall_id: {"precio_usd", "colores"}}.
+    """
+    resultado = {}
+    ids = [i for i in dict.fromkeys(scryfall_ids) if i]
+    for desde in range(0, len(ids), 75):
+        tanda = ids[desde:desde + 75]
+        try:
+            r = requests.post(
+                "https://api.scryfall.com/cards/collection",
+                json={"identifiers": [{"id": i} for i in tanda]},
+                headers=HEADERS, timeout=15,
+            )
+            datos = r.json() if r.status_code == 200 else {}
+        except requests.RequestException:
+            datos = {}
+        for c in datos.get("data", []):
+            precios = c.get("prices") or {}
+            usd = precios.get("usd") or precios.get("usd_foil") or precios.get("usd_etched")
+            resultado[c.get("id")] = {"precio_usd": float(usd) if usd else None, "colores": colores_de(c)}
+        time.sleep(0.1)   # Scryfall pide no más de 10 pedidos por segundo
+    return resultado
+
+
 def _impresion(datos: dict) -> dict:
     """Una impresión de Scryfall reducida a lo que guarda el inventario."""
     precios = datos.get("prices") or {}
@@ -247,6 +284,7 @@ def _impresion(datos: dict) -> dict:
         "precio_usd": float(usd) if usd else None,
         "fecha": datos.get("released_at"),
         "legal_standard": (datos.get("legalities") or {}).get("standard") == "legal",
+        "colores": colores_de(datos),
     }
 
 

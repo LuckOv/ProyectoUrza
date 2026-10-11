@@ -71,7 +71,15 @@ export async function exportarHistorial(filtros = {}) {
   URL.revokeObjectURL(url);
 }
 
-export const dashboard = () => pedir("/vendedor/dashboard");
+export const dashboard = (dias = 30) => pedir(`/vendedor/dashboard${qs({ dias })}`);
+export const actualizarMercado = () => pedir("/vendedor/mercado/actualizar", { metodo: "POST" });
+export const mantenerPrecio = (id) => pedir(`/vendedor/inventario/${id}/mantener-precio`, { metodo: "POST" });
+
+export const propuestas = (filtros = {}) => pedir(`/vendedor/propuestas${qs(filtros)}`);
+export const cambiarPropuesta = (id, datos) => pedir(`/vendedor/propuestas/${id}`, { metodo: "PATCH", cuerpo: datos });
+export const propuestaAlInventario = (id, datos) =>
+  pedir(`/vendedor/propuestas/${id}/al-inventario`, { metodo: "POST", cuerpo: datos });
+export const borrarPropuesta = (id) => pedir(`/vendedor/propuestas/${id}`, { metodo: "DELETE" });
 export const actividad = (filtros = {}) => pedir(`/vendedor/actividad${qs(filtros)}`);
 
 export const config = () => pedir("/vendedor/config");
