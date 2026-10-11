@@ -5,13 +5,13 @@ import requests
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-import base
-import cartas
-import inventario
-import tienda
-from cartas import _plano, ficha, resolver_nombre
-from lore import consultar_lore_mtg
-from reglas import consultar_reglas_mtg
+from tienda import base
+from tienda import cartas
+from tienda import inventario
+from tienda import tienda
+from tienda.cartas import _plano, ficha, resolver_nombre
+from agentes.lore import consultar_lore_mtg
+from agentes.reglas import consultar_reglas_mtg
 
 # Cabecera obligatoria que exige la API de Scryfall para no bloquear la petición
 HEADERS = {

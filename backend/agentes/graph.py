@@ -3,8 +3,8 @@ from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from agent_sales import agente_ventas  # Importamos la nueva función/wrapper
-from tools import lista_tools
+from agentes.agent_sales import agente_ventas  # Importamos la nueva función/wrapper
+from agentes.tools import lista_tools
 
 # 1. Definimos el Estado (la memoria del grafo)
 class State(TypedDict):

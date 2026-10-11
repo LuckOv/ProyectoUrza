@@ -108,7 +108,7 @@ def stock_de(nombre: str):
 
     Suma todas las variantes (sets y grados) de la carta.
     """
-    import inventario   # import tardío: inventario también usa este módulo
+    from tienda import inventario   # import tardío: inventario también usa este módulo
     return inventario.stock_total(nombre)
 
 
@@ -187,7 +187,7 @@ def buscar(nombre: str):
     Lo de Scryfall (imagen, tipo) se cachea; el stock y el precio de la
     tienda se releen siempre, porque cambian con cada venta o edición.
     """
-    import inventario
+    from tienda import inventario
 
     clave = (nombre or "").strip().lower()
     if not clave:

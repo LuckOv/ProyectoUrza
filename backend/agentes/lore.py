@@ -21,12 +21,12 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
-from reglas import _funcion_embedding, _funcion_rerank, _juez_llm, _traducir, motivo_no_disponible
+from agentes.reglas import _funcion_embedding, _funcion_rerank, _juez_llm, _traducir, motivo_no_disponible
 
 # Chroma se importa recién al cargar la base (cargar_rag): arrastra torch, que
 # algunos Windows bloquean. Así un bloqueo sólo apaga el lore, no el agente.
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent
 RAG_DIR = BASE / "lore_db"
 COLECCION = "lore_mtg"
 K_CANDIDATOS = 15

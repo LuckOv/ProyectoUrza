@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { pesos } from "../formato.js";
+import { pesos } from "../compartido/formato.js";
 import * as api from "./api.js";
 import { ESTADOS, EtiquetaEstado, Icono, fechaCorta, fechaHora, iso, useAviso } from "./comunes.jsx";
 

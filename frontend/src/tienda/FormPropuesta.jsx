@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import * as api from "./api.js";
-import { dolares } from "./formato.js";
+import { dolares } from "../compartido/formato.js";
 
 const GRADOS = ["Sin graduar", ...Array.from({ length: 10 }, (_, i) => `PSA ${10 - i}`)];
 const MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;

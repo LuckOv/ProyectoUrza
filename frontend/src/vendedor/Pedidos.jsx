@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { pesos } from "../formato.js";
+import { pesos } from "../compartido/formato.js";
 import * as api from "./api.js";
 import {
   CLAVES_DIA, Confirmar, DIAS_CORTOS, ESTADOS, EtiquetaEstado, Icono, MESES, Modal,

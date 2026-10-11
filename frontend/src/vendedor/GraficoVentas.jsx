@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { numero, pesos } from "../formato.js";
+import { numero, pesos } from "../compartido/formato.js";
 import { MESES, desdeIso } from "./comunes.jsx";
 
 /* Escala "redonda" para el eje: 0, 5.000, 10.000... según el máximo. */

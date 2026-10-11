@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage
 
-import base
-from tools import lista_tools
+from tienda import base
+from agentes.tools import lista_tools
 
 load_dotenv()
 

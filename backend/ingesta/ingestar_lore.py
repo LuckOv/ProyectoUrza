@@ -25,6 +25,13 @@ El RAG de runtime (lore.py) carga lore_db/ una sola vez por proceso; si el
 índice no existe avisa en vez de romper. Datos regenerables → gitignore.
 """
 
+# Permite correrlo también como archivo suelto (python ingesta/x.py), además de
+# con python -m: agrega backend/ al path para que encuentre los paquetes.
+if __package__ in (None, ""):
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 import argparse
 import json
 import shutil
@@ -39,7 +46,7 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent
 RAG_DIR = BASE / "lore_db"
 SNAP_DIR = BASE / "lore"
 PAGINAS_JSONL = SNAP_DIR / "paginas.jsonl"

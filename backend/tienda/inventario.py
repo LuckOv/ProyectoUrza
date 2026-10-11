@@ -22,9 +22,9 @@ from datetime import datetime, timedelta
 
 import requests
 
-import base
-import cartas
-from cartas import _plano
+from tienda import base
+from tienda import cartas
+from tienda.cartas import _plano
 
 GRADOS = ["Sin graduar"] + [f"PSA {n}" for n in range(10, 0, -1)]
 CASAS_DOLAR = ["blue", "oficial", "tarjeta", "bolsa", "contadoconliqui", "cripto", "mayorista"]

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { dolares, numero, pesos } from "../formato.js";
+import { dolares, numero, pesos } from "../compartido/formato.js";
 import * as api from "./api.js";
 import { EtiquetaEstado, fechaCorta } from "./comunes.jsx";
 import GraficoVentas from "./GraficoVentas.jsx";

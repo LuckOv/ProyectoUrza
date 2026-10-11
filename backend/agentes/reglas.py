@@ -30,7 +30,7 @@ from langchain_groq import ChatGroq
 
 load_dotenv()
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent
 RAG_DIR = BASE / "reglas_db"
 COLECCION = "reglas_completas"
 MODELO_EMBEDDINGS = "paraphrase-multilingual-MiniLM-L12-v2"

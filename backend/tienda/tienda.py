@@ -17,8 +17,8 @@ acomoda solo según el estado.
 
 from datetime import date, datetime, timedelta
 
-import base
-import inventario
+from tienda import base
+from tienda import inventario
 
 ESTADOS = ["pendiente", "realizada", "rechazada"]
 ETIQUETA_ESTADO = {"pendiente": "pendiente", "realizada": "realizada", "rechazada": "rechazada"}

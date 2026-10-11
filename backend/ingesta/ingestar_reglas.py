@@ -12,6 +12,13 @@ El texto crudo queda en backend/reglas/comp_rules.txt (gitignoreado) y los
 embeddings persistidos en backend/reglas_db/.
 """
 
+# Permite correrlo también como archivo suelto (python ingesta/x.py), además de
+# con python -m: agrega backend/ al path para que encuentre los paquetes.
+if __package__ in (None, ""):
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 import re
 import sys
 import urllib.parse
@@ -23,7 +30,7 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent
 DIR_REGLA = BASE / "reglas"
 TXT_PATH = DIR_REGLA / "comp_rules.txt"
 RAG_DIR = BASE / "reglas_db"

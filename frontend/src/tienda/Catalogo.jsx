@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import * as api from "./api.js";
-import { pesos } from "./formato.js";
+import { pesos } from "../compartido/formato.js";
 
 // Colores de Magic, con los íconos de maná que ya usa la tienda.
 const COLORES = [

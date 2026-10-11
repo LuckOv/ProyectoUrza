@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import { dolares, pesos } from "./formato.js";
+import { dolares, pesos } from "../compartido/formato.js";
 
 /* Imagen de carta que se inclina siguiendo el puntero y se levanta al pasarle
    por encima. El efecto es una rotación en dos ejes proporcional a qué tan

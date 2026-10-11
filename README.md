@@ -83,7 +83,7 @@ Después abrí `http://localhost:5173` en el navegador y chateá. El panel del v
 Si el agente no responde dudas de reglas, hay que cargar primero las reglas completas:
 ```powershell
 cd backend
-uv run python ingestar_reglas.py
+uv run python -m ingesta.ingestar_reglas
 ```
 Esto descarga las reglas oficiales y las indexa. Puede tardar un rato la primera vez.
 

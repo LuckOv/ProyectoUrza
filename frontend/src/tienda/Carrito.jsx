@@ -1,4 +1,4 @@
-import { pesos } from "./formato.js";
+import { pesos } from "../compartido/formato.js";
 
 /* Cajón del carrito. Se despliega desde la derecha y lista lo que hay
    adentro, con el total abajo. "Finalizar compra" no abre un formulario:

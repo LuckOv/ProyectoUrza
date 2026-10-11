@@ -16,11 +16,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-import base
-import cartas
-import inventario
-import propuestas
-import tienda
+from tienda import base
+from tienda import cartas
+from tienda import inventario
+from tienda import propuestas
+from tienda import tienda
 
 load_dotenv()
 

@@ -8,9 +8,9 @@ las acepta o rechaza, y si la compra la puede cargar directo al inventario.
 
 import re
 
-import base
-import cartas
-import inventario
+from tienda import base
+from tienda import cartas
+from tienda import inventario
 
 ESTADOS = ["nueva", "en_revision", "aceptada", "rechazada"]
 MONEDAS = ["ARS", "USD"]

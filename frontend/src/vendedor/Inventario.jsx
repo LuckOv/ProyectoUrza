@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { dolares, numero, pesos } from "../formato.js";
+import { dolares, numero, pesos } from "../compartido/formato.js";
 import AgregarCarta from "./AgregarCarta.jsx";
 import * as api from "./api.js";
 import {

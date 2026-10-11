@@ -17,8 +17,8 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-BASE = Path(__file__).parent / "urza.db"
-CSV_VIEJO = Path(__file__).parent / "inventario.csv"
+BASE = Path(__file__).resolve().parent.parent / "urza.db"
+CSV_VIEJO = Path(__file__).resolve().parent.parent / "inventario.csv"
 
 ARG = timezone(timedelta(hours=-3))
 VERSION_ESQUEMA = 2

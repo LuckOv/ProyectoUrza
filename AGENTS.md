@@ -30,7 +30,7 @@ No hay cuentas de jugador: el carrito se ata a la conversación (`thread_id`) y 
 
 ### Cómo levantarlo
 
-Credenciales en **`backend/.env`** (gitignoreado): `GROQ_API_KEY` (obligatoria), `VENDEDOR_CLAVE` (clave del panel; si falta, es `urza` y el panel lo avisa), `PRICECHARTING_TOKEN` (opcional, precios reales de graduadas) y `HF_TOKEN` (opcional, evita rate limits de HuggingFace). `load_dotenv()` (presente en `agent_sales.py` y `reglas.py`) busca el `.env` en el **directorio de trabajo**: arrancar siemPR desde `backend/`.
+Credenciales en **`backend/.env`** (gitignoreado): `GROQ_API_KEY` (obligatoria), `VENDEDOR_CLAVE` (clave del panel; si falta, es `urza` y el panel lo avisa), `PRICECHARTING_TOKEN` (opcional, precios reales de graduadas) y `HF_TOKEN` (opcional, evita rate limits de HuggingFace). `load_dotenv()` (presente en `agentes/agent_sales.py` y `agentes/reglas.py`) busca el `.env` en el **directorio de trabajo**: arrancar siemPR desde `backend/`.
 
 **Backend** (parado en `backend/`):
 ```powershell
@@ -42,22 +42,22 @@ Credenciales en **`backend/.env`** (gitignoreado): `GROQ_API_KEY` (obligatoria),
 - `GET /carta?nombre=` → ficha para la carta 3D, con `variantes` (una por grado/set) y precio en pesos.
 - `GET /catalogo` → todas las variantes a la venta (con stock y precio), para la lista con buscador del chat.
 - `/chat` además devuelve `mazo` (cartas sugeridas para el abanico) y `catalogo` (true si hay que mostrar el botón "Ver todas las cartas").
-- Panel del vendedor: todo bajo `/vendedor/*` con header `X-Vendedor-Clave` (ver `vendedor.py` o `/docs`): inventario, Scryfall (autocompletar/impresiones), pedidos, `historial.csv`, dashboard, config y descuentos.
+- Panel del vendedor: todo bajo `/vendedor/*` con header `X-Vendedor-Clave` (ver `panel/vendedor.py` o `/docs`): inventario, Scryfall (autocompletar/impresiones), pedidos, `historial.csv`, dashboard, config y descuentos.
 
 **Frontend** (parado en `frontend/`): `npm run dev` (dev) / `npm run build` (producción). Tienda en `http://localhost:5173/`, panel del vendedor en `http://localhost:5173/vendedor.html`.
 
 **RAG de reglas**: si `backend/reglas_db/` no existe, ingestar desde `backend/`:
 ```powershell
-uv run python ingestar_reglas.py            # baja las Comprehensive Rules y las indexa
-uv run python ingestar_reglas.py --rebuild  # re-indexa desde cero
+uv run python -m ingesta.ingestar_reglas            # baja las Comprehensive Rules y las indexa
+uv run python -m ingesta.ingestar_reglas --rebuild  # re-indexa desde cero
 ```
 
 **RAG de lore**: si `backend/lore_db/` no existe, ingestar desde `backend/` (ETL en dos fases, **resumible** ante cortes de red):
 ```powershell
-uv run python ingestar_lore.py --solo-bajar   # red → snapshot en backend/lore/ (retoma si se corta)
-uv run python ingestar_lore.py --index        # offline → backend/lore_db/
-uv run python ingestar_lore.py                # ambas fases en corrida
-uv run python ingestar_lore.py --rebuild      # borra snapshot e índice y arranca de cero
+uv run python -m ingesta.ingestar_lore --solo-bajar   # red → snapshot en backend/lore/ (retoma si se corta)
+uv run python -m ingesta.ingestar_lore --index        # offline → backend/lore_db/
+uv run python -m ingesta.ingestar_lore                # ambas fases en corrida
+uv run python -m ingesta.ingestar_lore --rebuild      # borra snapshot e índice y arranca de cero
 ```
 
 ### Estado de datos hoy
@@ -68,27 +68,41 @@ uv run python ingestar_lore.py --rebuild      # borra snapshot e índice y arran
 
 ### Arquitectura (backend/)
 
+Organizado en carpetas (paquetes de Python). Se arranca siempre parado en `backend/`, así los imports (`from tienda import base`, `from agentes.graph import app_graph`) encuentran los paquetes y `load_dotenv()` encuentra el `.env`. Los datos (`urza.db`, `inventario.csv`, `reglas_db/`, `lore_db/`, `lore/`) siguen en `backend/`; los módulos los ubican con `Path(__file__).resolve().parent.parent`.
+
+```
+backend/
+  api.py      → API HTTP (uvicorn api:app)
+  agentes/    → grafo, prompt de Urza, herramientas, Ajani (reglas) y Teferi (lore)
+  tienda/     → base de datos, Scryfall, inventario, carrito/pedidos, propuestas
+  panel/      → endpoints del panel del vendedor
+  ingesta/    → ETL de los RAG (python -m ingesta.ingestar_reglas / ingesta.ingestar_lore)
+  scripts/    → test_local, check_models (python -m scripts.test_local)
+```
+
 | Archivo | Rol |
 |---|---|
 | `api.py` | API HTTP. Al arrancar: `base.preparar()` (crea/migra tablas), importa el CSV viejo si el inventario está vacío y completa imágenes/precios desde Scryfall en segundo plano. Carga el grafo en forma lazy. Incluye los routers de `vendedor.py`. |
-| `base.py` | Conexión SQLite, esquema (versión en `PRAGMA user_version`), configuración dinámica (`horarios`, `dolar`, `stock_bajo`, `descuento_general`) y registro de `movimientos`. Hora fija de Argentina (UTC-3). |
-| `inventario.py` | Inventario por variante (impresión + grado), SKU `URZ-0001`, precio en pesos = `precio_usd × dólar × (1 − descuento)`, dólar automático (dolarapi, refresco cada hora) o manual, descuentos general y por carta, alta desde Scryfall, importación del CSV viejo. |
-| `vendedor.py` | Endpoints `/vendedor/*` del panel, protegidos por `VENDEDOR_CLAVE`. Dashboard (rankings por color/carta/expansión, alertas de precio y stock), propuestas, export CSV del historial, config. |
-| `propuestas.py` | Cartas que los clientes ofrecen a la tienda. Valida nombre/apellido/mail obligatorios (mail con formato), exige `scryfall_id` (edición exacta), estados `nueva`/`en_revision`/`aceptada`/`rechazada`, `al_inventario` (acepta y da de alta). Todo queda en `movimientos` (tipo `propuesta`). |
-| `graph.py` | Grafo: nodo `Ventas` (`agent_ventas`) → `tools` (ToolNode) → vuelve a `Ventas`; `MemorySaver` con `thread_id` por pestaña. |
-| `agent_sales.py` | Prompt de **Urza**, el orquestador, que reparte entre el equipo: **Tibalt** (vendedor: stock, precios, carrito, compra, catálogo, propuestas), **Ajani** (juez de reglas, `consultar_reglas_mtg`), **Teferi** (lore, `consultar_lore_mtg`) y **Saheeli** (armado de mazos, `sugerir_cartas_mazo`). `api.py` (`AGENTE_DE`) devuelve en `agentes` a quién consultó y el chat lo muestra ("Urza · consultó a Ajani, el juez"). Prompt (reglas de herramientas, reglas vs. lore, flujo de compra y estilo). Se arma en cada turno con la fecha de hoy y los horarios de la tienda (`system_prompt()`), así el agente convierte "el sábado a las 5" en fecha y hora concretas. |
-| `tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg`, `consultar_lore_mtg`, `listar_cartas_disponibles` (catálogo), `sugerir_cartas_mazo` (armado de mazos, devuelve las cartas como *artifact* para el abanico), `iniciar_propuesta` (abre el formulario de propuesta en el chat, precargado con lo que dijo el cliente) y las de compra `agregar_al_carrito` (con `variante_id` opcional si hay varias), `ver_carrito`, `quitar_del_carrito`, `confirmar_compra(nombre, apellido, fecha_retiro, hora_retiro)` (reciben el `thread_id` por `RunnableConfig`, invisible para el modelo). |
-| `cartas.py` | Todo lo de Scryfall: `ficha`, `buscar` (carta 3D + variantes de la tienda), `resolver_nombre` (normaliza nombres ES/mal escritos, con caché), `autocompletar`, `impresiones`, `impresion_por_id`, `total_pool_standard`, `colores_de` (identidad de color WUBRG), `precios_actuales` (precio de mercado en lote vía `POST /cards/collection`, 75 por pedido). |
-| `tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
-| `reglas.py` | **Ajani**, subagente juez (imports de torch/Chroma lazy; si faltan, `motivo_no_disponible` lo explica): traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
-| `lore.py` | **Teferi**, subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
-| `ingestar_reglas.py` | Descarga las Comprehensive Rules, las parte en chunks (1500 chars, overlap 200) con metadata `regla`/`titulo`/`seccion`, e indexa en Chroma. |
-| `ingestar_lore.py` | ETL del lore **resumible**: baja la MTG Wiki (Fandom) con checkpoint en `backend/lore/` (`paginas.jsonl` append-only + `estado.json` + `ronda.json` con manifiesto por ronda), escaneando categorías raíz (BFS) y una lista curada de títulos; `--index` reconstruye `lore_db/` offline. |
-| `test_local.py` | Chat por consola para probar al agente sin front: `..\.venv\Scripts\python test_local.py`. |
+| `tienda/base.py` | Conexión SQLite, esquema (versión en `PRAGMA user_version`), configuración dinámica (`horarios`, `dolar`, `stock_bajo`, `descuento_general`) y registro de `movimientos`. Hora fija de Argentina (UTC-3). |
+| `tienda/inventario.py` | Inventario por variante (impresión + grado), SKU `URZ-0001`, precio en pesos = `precio_usd × dólar × (1 − descuento)`, dólar automático (dolarapi, refresco cada hora) o manual, descuentos general y por carta, alta desde Scryfall, importación del CSV viejo. |
+| `panel/vendedor.py` | Endpoints `/vendedor/*` del panel, protegidos por `VENDEDOR_CLAVE`. Dashboard (rankings por color/carta/expansión, alertas de precio y stock), propuestas, export CSV del historial, config. |
+| `tienda/propuestas.py` | Cartas que los clientes ofrecen a la tienda. Valida nombre/apellido/mail obligatorios (mail con formato), exige `scryfall_id` (edición exacta), estados `nueva`/`en_revision`/`aceptada`/`rechazada`, `al_inventario` (acepta y da de alta). Todo queda en `movimientos` (tipo `propuesta`). |
+| `agentes/graph.py` | Grafo: nodo `Ventas` (`agent_ventas`) → `tools` (ToolNode) → vuelve a `Ventas`; `MemorySaver` con `thread_id` por pestaña. |
+| `agentes/agent_sales.py` | Prompt de **Urza**, el orquestador, que reparte entre el equipo: **Tibalt** (vendedor: stock, precios, carrito, compra, catálogo, propuestas), **Ajani** (juez de reglas, `consultar_reglas_mtg`), **Teferi** (lore, `consultar_lore_mtg`) y **Saheeli** (armado de mazos, `sugerir_cartas_mazo`). `api.py` (`AGENTE_DE`) devuelve en `agentes` a quién consultó y el chat lo muestra ("Urza · consultó a Ajani, el juez"). Prompt (reglas de herramientas, reglas vs. lore, flujo de compra y estilo). Se arma en cada turno con la fecha de hoy y los horarios de la tienda (`system_prompt()`), así el agente convierte "el sábado a las 5" en fecha y hora concretas. |
+| `agentes/tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg`, `consultar_lore_mtg`, `listar_cartas_disponibles` (catálogo), `sugerir_cartas_mazo` (armado de mazos, devuelve las cartas como *artifact* para el abanico), `iniciar_propuesta` (abre el formulario de propuesta en el chat, precargado con lo que dijo el cliente) y las de compra `agregar_al_carrito` (con `variante_id` opcional si hay varias), `ver_carrito`, `quitar_del_carrito`, `confirmar_compra(nombre, apellido, fecha_retiro, hora_retiro)` (reciben el `thread_id` por `RunnableConfig`, invisible para el modelo). |
+| `tienda/cartas.py` | Todo lo de Scryfall: `ficha`, `buscar` (carta 3D + variantes de la tienda), `resolver_nombre` (normaliza nombres ES/mal escritos, con caché), `autocompletar`, `impresiones`, `impresion_por_id`, `total_pool_standard`, `colores_de` (identidad de color WUBRG), `precios_actuales` (precio de mercado en lote vía `POST /cards/collection`, 75 por pedido). |
+| `tienda/tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
+| `agentes/reglas.py` | **Ajani**, subagente juez (imports de torch/Chroma lazy; si faltan, `motivo_no_disponible` lo explica): traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
+| `agentes/lore.py` | **Teferi**, subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
+| `ingesta/ingestar_reglas.py` | Descarga las Comprehensive Rules, las parte en chunks (1500 chars, overlap 200) con metadata `regla`/`titulo`/`seccion`, e indexa en Chroma. |
+| `ingesta/ingestar_lore.py` | ETL del lore **resumible**: baja la MTG Wiki (Fandom) con checkpoint en `backend/lore/` (`paginas.jsonl` append-only + `estado.json` + `ronda.json` con manifiesto por ronda), escaneando categorías raíz (BFS) y una lista curada de títulos; `--index` reconstruye `lore_db/` offline. |
+| `scripts/test_local.py` | Chat por consola para probar al agente sin front: `..\.venv\Scripts\python -m scripts.test_local`. |
 
 ### Frontend (`frontend/src/`)
 
-Tienda (`index.html`): `App.jsx` (chat + flujo), `api.js` (fetch), `Carta3D.jsx` (carta 3D con selector de variante y precio en pesos), `Carrito.jsx` (cajón con "Finalizar compra", que manda el pedido de cierre al chat), `Bolitas.jsx`, `Abanico.jsx` (mazo en abanico que se achica al ancho del chat, sin scroll lateral), `Catalogo.jsx` (lista con buscador y filtros: color, M/C, grado/PSA, expansión, precio mín/máx, orden, con descuento), `FormPropuesta.jsx` (ofrecer una carta: autocompletado de Scryfall → edición → grado/cantidad/precio en $ o US$ → nombre, apellido y mail obligatorios), `formato.js` (pesos/dólares, compartido), `styles.css`. El tope de stock del carrito se verifica en `tienda.agregar` (lo usan tanto el endpoint como la herramienta del agente).
+`tienda/` (página del chat, entra por `tienda/main.jsx` desde `index.html`), `vendedor/` (panel, entra por `vendedor/main.jsx` desde `vendedor.html`) y `compartido/` (`formato.js`, lo usan las dos).
+
+Tienda (`index.html` → `src/tienda/`): `App.jsx` (chat + flujo), `api.js` (fetch), `Carta3D.jsx` (carta 3D con selector de variante y precio en pesos), `Carrito.jsx` (cajón con "Finalizar compra", que manda el pedido de cierre al chat), `Bolitas.jsx`, `Abanico.jsx` (mazo en abanico que se achica al ancho del chat, sin scroll lateral), `Catalogo.jsx` (lista con buscador y filtros: color, M/C, grado/PSA, expansión, precio mín/máx, orden, con descuento), `FormPropuesta.jsx` (ofrecer una carta: autocompletado de Scryfall → edición → grado/cantidad/precio en $ o US$ → nombre, apellido y mail obligatorios), `../compartido/formato.js` (pesos/dólares), `styles.css`. El tope de stock del carrito se verifica en `tienda.agregar` (lo usan tanto el endpoint como la herramienta del agente).
 
 Panel del vendedor (`vendedor.html` → `src/vendedor/`): `Panel.jsx` (entrada con clave en `sessionStorage`, pestañas en el hash de la URL), `Inventario.jsx` (grilla, filtros, selección, edición, borrado), `AgregarCarta.jsx` (autocompletado de Scryfall → impresión → grado/cantidad/precio), `Pedidos.jsx` (calendario mensual por fecha de retiro, panel del día, nuevo pedido, editar, sacar), `Propuestas.jsx` (lista de propuestas con filtros por estado, buscador, nota interna, aceptar y cargar al inventario, rechazar, responder por mail; globito con las nuevas en la pestaña), `Dashboard.jsx` + `PanelesVentas.jsx` (torta de colores, lista de cartas, barras de expansiones, alertas) + `GraficoVentas.jsx`, `Historial.jsx` (tabla "Protocolo" con comentario editable y export CSV), `Configuracion.jsx` (horarios, dólar, stock bajo, panel de descuentos), `comunes.jsx`, `api.js`, `vendedor.css` (misma estética cuero/pergamino que la tienda).
 

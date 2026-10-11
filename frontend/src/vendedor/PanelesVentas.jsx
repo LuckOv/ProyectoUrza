@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { dolares, numero, pesos } from "../formato.js";
+import { dolares, numero, pesos } from "../compartido/formato.js";
 import { Etiqueta, textoAlerta } from "./comunes.jsx";
 
 // Colores de Magic. Cada porción lleva además su nombre y % en la leyenda,

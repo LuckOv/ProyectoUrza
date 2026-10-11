@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { dolares, pesos } from "../formato.js";
+import { dolares, pesos } from "../compartido/formato.js";
 import * as api from "./api.js";
 import {
   Confirmar, ESTADOS_PROPUESTA, Etiqueta, Icono, Modal, NotaSugerencia, fechaHora, useAviso, usePrecioSugerido,

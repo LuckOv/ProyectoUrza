@@ -23,12 +23,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-import base
-import cartas
-import inventario
-import propuestas
-import tienda
-import vendedor
+from tienda import base
+from tienda import cartas
+from tienda import inventario
+from tienda import propuestas
+from tienda import tienda
+from panel import vendedor
 
 app = FastAPI(title="URZA API")
 
@@ -163,7 +163,7 @@ AGENTE_DE = {
 def _obtener_grafo():
     global _grafo
     if _grafo is None:
-        from graph import app_graph
+        from agentes.graph import app_graph
         _grafo = app_graph
     return _grafo
 

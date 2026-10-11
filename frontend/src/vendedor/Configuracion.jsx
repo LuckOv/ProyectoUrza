@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { pesos } from "../formato.js";
+import { pesos } from "../compartido/formato.js";
 import * as api from "./api.js";
 import { Icono, Modal, haceCuanto, useAviso } from "./comunes.jsx";
 import RegistroActividad from "./RegistroActividad.jsx";

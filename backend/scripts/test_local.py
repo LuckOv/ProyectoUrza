@@ -1,5 +1,12 @@
+# Permite correrlo también como archivo suelto (python ingesta/x.py), además de
+# con python -m: agrega backend/ al path para que encuentre los paquetes.
+if __package__ in (None, ""):
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 from langchain_core.messages import HumanMessage
-from graph import app_graph
+from agentes.graph import app_graph
 
 print("\n" + "="*50)
 print("🤖 Urza MVP (Agente de Ventas) - Entorno de Pruebas")
