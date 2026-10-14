@@ -50,30 +50,25 @@ def consultar_precio_cardmarket(nombre_carta: str) -> str:
     print(f"\n[DEBUG TOOL] Solicitando a Scryfall: '{nombre_limpio}'")
     
     nombre_encoded = urllib.parse.quote(nombre_limpio)
-    
-    # 1. Intento por nombre exacto
-    url_exact = f"https://api.scryfall.com/cards/named?exact={nombre_encoded}"
-    respuesta = requests.get(url_exact, headers=HEADERS)
-    
-    if respuesta.status_code == 200:
-        datos = respuesta.json()
-        precio_eur = datos.get("prices", {}).get("eur") 
-        if precio_eur:
-            return f"El precio actual de '{datos.get('name')}' en CardMarket (vía Scryfall) es de €{precio_eur}."
-        return f"Encontré la carta '{datos.get('name')}', pero Scryfall no registra un precio en euros actualmente."
-    
-    # 2. Fallback por búsqueda difusa (Fuzzy)
-    url_fuzzy = f"https://api.scryfall.com/cards/named?fuzzy={nombre_encoded}"
-    resp_fuzzy = requests.get(url_fuzzy, headers=HEADERS)
-    
-    if resp_fuzzy.status_code == 200:
-        datos = resp_fuzzy.json()
-        precio_eur = datos.get("prices", {}).get("eur")
-        if precio_eur:
-            return f"El precio actual de '{datos.get('name')}' en CardMarket (vía Scryfall) es de €{precio_eur}."
-        return f"Encontré la carta '{datos.get('name')}', pero no registra precio en euros."
-        
-    return f"No pude encontrar la carta '{nombre_limpio}' en Scryfall (Código HTTP: {respuesta.status_code}). Verifica el nombre en inglés."
+
+    # 1. Nombre exacto; 2. si no, búsqueda difusa (fuzzy). Con timeout: sin él,
+    # un Scryfall colgado dejaba el chat esperando para siempre.
+    codigo = None
+    for modo in ("exact", "fuzzy"):
+        try:
+            respuesta = requests.get(f"https://api.scryfall.com/cards/named?{modo}={nombre_encoded}",
+                                     headers=HEADERS, timeout=8)
+            codigo = respuesta.status_code
+            datos = respuesta.json() if codigo == 200 else None
+        except (requests.RequestException, ValueError):
+            return "No pude consultar Scryfall en este momento (sin conexión o no respondió). Probá en un rato."
+        if datos:
+            precio_eur = (datos.get("prices") or {}).get("eur")
+            if precio_eur:
+                return f"El precio actual de '{datos.get('name')}' en CardMarket (vía Scryfall) es de €{precio_eur}."
+            return f"Encontré la carta '{datos.get('name')}', pero Scryfall no registra un precio en euros actualmente."
+
+    return f"No pude encontrar la carta '{nombre_limpio}' en Scryfall (Código HTTP: {codigo}). Verifica el nombre en inglés."
 
 
 @tool

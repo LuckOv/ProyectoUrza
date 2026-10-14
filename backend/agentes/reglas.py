@@ -10,7 +10,8 @@ herramienta:
   3. devuelve la respuesta del juez citando los números de regla.
 
 La base vectorial se carga una sola vez por proceso; si todavía no se ingirió,
-la herramienta avisa en vez de romper. La ingesta se hace con ingestar_reglas.py.
+la herramienta avisa en vez de romper. La ingesta se hace con
+`uv run python -m ingesta.ingestar_reglas` (parado en backend/).
 """
 
 import re
@@ -87,6 +88,14 @@ TERMINOS = [
     ("token", "token"),
     ("contador", "counter"),
 ]
+
+
+_PENSAMIENTO = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL | re.IGNORECASE)
+
+
+def sin_razonamiento(texto) -> str:
+    """Saca el razonamiento <think>…</think> que a veces agrega Qwen3."""
+    return _PENSAMIENTO.sub("", str(texto or "")).strip()
 
 
 def _sin_acentos(texto: str) -> str:
@@ -170,7 +179,7 @@ def _traducir(pregunta: str):
         respuesta = _juez_llm().invoke(
             [SYSTEM_PROMPT_TRADUCTOR, HumanMessage(content=f"Consulta del jugador:\n{pregunta}")]
         )
-        traduccion = respuesta.content.strip()
+        traduccion = sin_razonamiento(respuesta.content)
         return traduccion if traduccion else None
     except Exception:
         return None
@@ -211,7 +220,7 @@ def consultar_reglas_mtg(pregunta: str) -> str:
     if vs is None:
         return (
             "Todavía no tengo cargada la base de reglas en el servidor. "
-            "Avisá que corran 'uv run python ingestar_reglas.py' dentro de backend/."
+            "Avisá que corran 'uv run python -m ingesta.ingestar_reglas' dentro de backend/."
         )
 
     # La mejor forma de preguntarle a las reglas es en inglés; si no hay API key,
@@ -250,4 +259,4 @@ def consultar_reglas_mtg(pregunta: str) -> str:
             f"{contexto}"
         )
 
-    return f"{respuesta.content.strip()}\n\nBases consultadas: {_citar_reglas(mejores)}"
+    return f"{sin_razonamiento(respuesta.content)}\n\nBases consultadas: {_citar_reglas(mejores)}"

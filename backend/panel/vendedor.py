@@ -12,10 +12,13 @@ import re
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, Header, HTTPException
+import time
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from panel import bot
 from tienda import base
 from tienda import cartas
 from tienda import inventario
@@ -31,10 +34,52 @@ def _clave_vendedor() -> str:
     return os.getenv("VENDEDOR_CLAVE") or CLAVE_POR_DEFECTO
 
 
-def solo_vendedor(x_vendedor_clave: str | None = Header(default=None)):
+def _por_internet(request: Request) -> bool:
+    """¿El pedido llegó por el túnel de Cloudflare (el link público)? Cloudflare
+    agrega estos encabezados y el proxy de Vite los pasa tal cual."""
+    return bool(request.headers.get("cf-connecting-ip") or request.headers.get("cf-ray"))
+
+
+def _ip(request: Request) -> str:
+    return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+
+
+def _clave_publica_ok(request: Request):
+    # Con el link público cualquiera puede llegar al panel: con la clave de
+    # fábrica ("urza") no se entra. Hay que poner una propia en backend/.env.
+    if _por_internet(request) and not os.getenv("VENDEDOR_CLAVE"):
+        raise HTTPException(
+            status_code=403,
+            detail="El panel está abierto por internet con la clave de fábrica. Poné una clave propia "
+                   "(VENDEDOR_CLAVE=...) en backend/.env y reiniciá el backend.",
+        )
+
+
+def solo_vendedor(request: Request, x_vendedor_clave: str | None = Header(default=None)):
+    _clave_publica_ok(request)
     if not x_vendedor_clave or x_vendedor_clave != _clave_vendedor():
+        if _por_internet(request):
+            ip = _ip(request)
+            _frenar_si_insiste(ip)
+            if x_vendedor_clave:      # probar claves por cualquier endpoint también cuenta
+                _fallidos.setdefault(ip, []).append(time.time())
         raise HTTPException(status_code=401, detail="Clave de vendedor incorrecta.")
     return True
+
+
+# Intentos fallidos de clave por IP, sólo por el link público (ahí cualquiera
+# podría probar claves sin parar). Después de 8 errores en 10 minutos, se espera.
+INTENTOS_MAX, VENTANA = 8, 600
+_fallidos: dict[str, list[float]] = {}
+
+
+def _frenar_si_insiste(ip: str):
+    ahora = time.time()
+    recientes = [t for t in _fallidos.get(ip, []) if ahora - t < VENTANA]
+    _fallidos[ip] = recientes
+    if len(recientes) >= INTENTOS_MAX:
+        espera = int(VENTANA - (ahora - recientes[0])) // 60 + 1
+        raise HTTPException(status_code=429, detail=f"Demasiados intentos. Probá de nuevo en {espera} minutos.")
 
 
 router = APIRouter(prefix="/vendedor", tags=["vendedor"])
@@ -52,9 +97,18 @@ class Clave(BaseModel):
 
 
 @router.post("/entrar")
-def entrar(datos: Clave):
+def entrar(datos: Clave, request: Request):
+    _clave_publica_ok(request)
+    # El freno sólo corre para el link público: en esta compu (o el wifi) no
+    # hace falta, y si cambiás la clave con el panel abierto no te bloquea.
+    publico, ip = _por_internet(request), _ip(request)
+    if publico:
+        _frenar_si_insiste(ip)
     if datos.clave != _clave_vendedor():
+        if publico:
+            _fallidos.setdefault(ip, []).append(time.time())
         raise HTTPException(status_code=401, detail="Clave de vendedor incorrecta.")
+    _fallidos.pop(ip, None)
     return {"ok": True, "clave_por_defecto": not os.getenv("VENDEDOR_CLAVE")}
 
 
@@ -459,6 +513,31 @@ def borrar_propuesta(pid: int):
     return {"ok": True}
 
 
+# --- bases del bot (reglas y lore) -------------------------------------------
+
+class InstalarBot(BaseModel):
+    partes: list[str]
+
+
+@protegido.get("/bot")
+def estado_bot():
+    """Si están instaladas las bases de Ajani (reglas) y Teferi (lore), y cómo va la instalación."""
+    return bot.estado()
+
+
+@protegido.post("/bot/instalar")
+def instalar_bot(datos: InstalarBot):
+    try:
+        return bot.instalar(datos.partes)
+    except ValueError as e:
+        _error(e, 409)
+
+
+@protegido.post("/bot/cancelar")
+def cancelar_bot():
+    return bot.cancelar()
+
+
 # --- registro de actividad ---------------------------------------------------
 
 @protegido.get("/actividad")
@@ -531,8 +610,9 @@ def _validar_horarios(horarios: dict) -> dict:
             limpio[dia] = None
             continue
         abre, cierra = str(h.get("abre", "")), str(h.get("cierra", ""))
-        if not re.fullmatch(r"\d{2}:\d{2}", abre) or not re.fullmatch(r"\d{2}:\d{2}", cierra):
-            raise ValueError(f"Horario inválido el {base.NOMBRE_DIA[dia]} (usá HH:MM).")
+        # HH entre 00 y 23 y MM entre 00 y 59 (antes pasaba "25:00").
+        if not all(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", x) for x in (abre, cierra)):
+            raise ValueError(f"Horario inválido el {base.NOMBRE_DIA[dia]} (usá HH:MM, de 00:00 a 23:59).")
         if abre >= cierra:
             raise ValueError(f"El {base.NOMBRE_DIA[dia]} la hora de cierre tiene que ser después de la apertura.")
         limpio[dia] = {"abre": abre, "cierra": cierra}

@@ -159,6 +159,7 @@ export function Modal({ titulo, subtitulo, onCerrar, children, pie, ancho = 560 
 /** Confirmación propia (los confirm() del navegador bloquean la página). */
 export function Confirmar({ titulo, mensaje, accion = "Confirmar", peligro, onSi, onNo }) {
   const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
   return (
     <Modal
       titulo={titulo}
@@ -170,7 +171,12 @@ export function Confirmar({ titulo, mensaje, accion = "Confirmar", peligro, onSi
           <button
             className={`boton ${peligro ? "peligro" : "primario"}`}
             disabled={ocupado}
-            onClick={async () => { setOcupado(true); try { await onSi(); } finally { setOcupado(false); } }}
+            onClick={async () => {
+              setOcupado(true);
+              setError("");
+              // Si falla (sin conexión, etc.) se muestra acá; antes el error se perdía en silencio.
+              try { await onSi(); } catch (e) { setError(e.message); } finally { setOcupado(false); }
+            }}
           >
             {ocupado ? "Un momento…" : accion}
           </button>
@@ -178,6 +184,7 @@ export function Confirmar({ titulo, mensaje, accion = "Confirmar", peligro, onSi
       }
     >
       <p className="texto">{mensaje}</p>
+      {error && <p className="error-texto">{error}</p>}
     </Modal>
   );
 }

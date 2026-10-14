@@ -10,6 +10,7 @@ const GRUPOS = [
   { id: "comentario", texto: "Comentarios" },
   { id: "entrada,ajuste,edicion,baja", texto: "Stock e inventario" },
   { id: "config", texto: "Configuración y descuentos" },
+  { id: "propuesta", texto: "Propuestas" },
 ];
 
 /* Todo lo que pasó en la tienda, del más nuevo al más viejo: pedidos y sus

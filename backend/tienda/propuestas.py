@@ -30,7 +30,13 @@ _VENDER = re.compile(
     r"les? (?:ofrezco|propongo)|ofrecer(?:les?|te)? (?:una|un|unas|unos|mis|esta|esta)|"
     r"me (?:la|lo|las|los)?\s*compr(?:[aá]s|an|ar[ií]as|ar[ií]an|ar[ií]a)|"
     r"(?:compran|compr[aá]s) cartas|(?:les|te) interesa(?:r[ií]a)? comprar\w*|"
-    r"tengo\b.{0,80}?\b(?:a|por)\s*(?:\$|u\$s|us\$|usd)?\s*\d+|tengo\b.{0,80}?\bpsa\s*\d+|"
+    # "tengo X a/por <precio>": el número tiene que parecer un precio (con
+    # moneda, en miles o de 3 cifras o más). Así "tengo 3 vidas y mi rival está
+    # a 5" o "le hacen daño a 2 criaturas" (preguntas de reglas) no cuentan.
+    r"tengo\b.{0,80}?\b(?:a|por)\s*(?:\$|u\$s|us\$|usd)\s*\d+|"
+    r"tengo\b.{0,80}?\b(?:a|por)\s*\d+(?:[.,]\d+)?\s*(?:pesos|ars|usd|d[oó]lares|lucas|mil|k)|"
+    r"tengo\b.{0,80}?\b(?:a|por)\s*(?:\d{1,3}(?:[.,]\d{3})+|\d{3,})|"
+    r"tengo\b.{0,80}?\bpsa\s*\d+|"
     r"hacer(?:les)? una propuesta|propuesta de venta)\b",
     re.IGNORECASE,
 )
@@ -113,19 +119,28 @@ TEXTO_FORMULARIO = (
     "y el precio, y dejá tu nombre, apellido y mail, que son obligatorios. "
     "Cuando la envíes, la revisamos y te respondemos por mail."
 )
-_MAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+# Sólo los caracteres comunes de un mail: además de rechazar errores de tipeo,
+# evita que se cuelen "?" o "&" en el link mailto: del panel.
+_MAIL = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$")
 
 
-def _validar(nombre, apellido, email, grado, cantidad, precio, moneda):
+# Topes de largo: el formulario es público, no tiene que aceptar textos gigantes.
+LARGOS = {"nombre": 80, "apellido": 80, "mail": 120, "comentario": 500}
+
+
+def _validar(nombre, apellido, email, grado, cantidad, precio, moneda, comentario=""):
     faltan = [c for c, v in (("nombre", nombre), ("apellido", apellido), ("mail", email)) if not (v or "").strip()]
     if faltan:
         raise ValueError(f"Faltan datos obligatorios: {', '.join(faltan)}.")
+    for campo, valor in (("nombre", nombre), ("apellido", apellido), ("mail", email), ("comentario", comentario)):
+        if len((valor or "").strip()) > LARGOS[campo]:
+            raise ValueError(f"El {campo} es demasiado largo (máximo {LARGOS[campo]} caracteres).")
     if not _MAIL.match(email.strip()):
         raise ValueError("El mail no parece válido (ej: nombre@gmail.com).")
     if grado not in inventario.GRADOS:
         raise ValueError(f"Grado inválido. Opciones: {', '.join(inventario.GRADOS)}.")
-    if int(cantidad) < 1:
-        raise ValueError("La cantidad tiene que ser al menos 1.")
+    if not 1 <= int(cantidad) <= 999:
+        raise ValueError("La cantidad tiene que estar entre 1 y 999.")
     if precio is None or float(precio) <= 0:
         raise ValueError("Poné el precio al que querés vender la carta.")
     if moneda not in MONEDAS:
@@ -134,9 +149,9 @@ def _validar(nombre, apellido, email, grado, cantidad, precio, moneda):
 
 def crear(thread_id: str | None, nombre: str, apellido: str, email: str, scryfall_id: str,
           grado: str, cantidad: int, precio: float, moneda: str = "ARS", comentario: str = "") -> dict:
-    _validar(nombre, apellido, email, grado, cantidad, precio, moneda)
+    _validar(nombre, apellido, email, grado, cantidad, precio, moneda, comentario)
     if not scryfall_id:
-        raise ValueError("Elegí la carta de la lista para que el vendedor sepa exactamente cuál es.")
+        raise ValueError("Elegí la carta de la lista para que sepamos exactamente cuál es.")
     imp = cartas.impresion_por_id(scryfall_id)
     if not imp:
         raise ValueError("No pude encontrar esa carta en Scryfall. Probá elegirla de nuevo.")
@@ -224,9 +239,22 @@ def al_inventario(pid: int, precio_venta_usd: float | None, cantidad: int | None
     p = obtener(pid)
     if not p:
         raise ValueError(f"No existe la propuesta #{pid}.")
+    if p.get("cargada"):
+        raise ValueError(f"La propuesta #{pid} ya se cargó al inventario.")
     if not p["scryfall_id"]:
         raise ValueError("La propuesta no tiene la carta de Scryfall: cargala a mano desde Inventario.")
-    item = inventario.alta(p["scryfall_id"], p["grado"], int(cantidad or p["cantidad"]), precio_venta_usd)
+    # Se marca antes de dar el alta: si llega un doble clic, el segundo ve la
+    # marca y no vuelve a sumar las cartas. Si el alta falla, se desmarca.
+    with base.conectar() as con:
+        tomada = con.execute("UPDATE propuestas SET cargada = 1 WHERE id = ? AND cargada = 0", (pid,)).rowcount
+    if not tomada:
+        raise ValueError(f"La propuesta #{pid} ya se cargó al inventario.")
+    try:
+        item = inventario.alta(p["scryfall_id"], p["grado"], int(cantidad or p["cantidad"]), precio_venta_usd)
+    except Exception:
+        with base.conectar() as con:
+            con.execute("UPDATE propuestas SET cargada = 0 WHERE id = ?", (pid,))
+        raise
     actualizar(pid, estado="aceptada")
     return item
 

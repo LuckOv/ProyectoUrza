@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { pesos } from "../compartido/formato.js";
 import * as api from "./api.js";
 import { Icono, Modal, haceCuanto, useAviso } from "./comunes.jsx";
+import BasesBot from "./BasesBot.jsx";
 import RegistroActividad from "./RegistroActividad.jsx";
 
 const NOMBRE_CASA = {
@@ -134,13 +135,16 @@ export default function Configuracion() {
   const [error, setError] = useState("");
   const [avisar, aviso] = useAviso();
 
-  const aplicar = (c) => {
+  // Al guardar una sección se actualiza sólo esa: antes se pisaban con los
+  // valores del servidor los cambios todavía sin guardar de las demás
+  // (ej. tocabas horarios y multiplicadores, guardabas uno y se perdía el otro).
+  const aplicar = (c, parte = null) => {
     setConf(c);
-    setHorarios(c.horarios);
-    setDolar({ modo: c.dolar.modo, casa: c.dolar.casa, valor: c.dolar.valor });
-    setStockBajo(c.stock_bajo);
-    setMultiplicadores(c.multiplicadores || {});
-    setAlertaPrecio(c.alerta_precio ?? 30);
+    if (!parte || parte === "horarios") setHorarios(c.horarios);
+    if (!parte || parte === "dolar") setDolar({ modo: c.dolar.modo, casa: c.dolar.casa, valor: c.dolar.valor });
+    if (!parte || parte === "stock") setStockBajo(c.stock_bajo);
+    if (!parte || parte === "multi") setMultiplicadores(c.multiplicadores || {});
+    if (!parte || parte === "alerta") setAlertaPrecio(c.alerta_precio ?? 30);
   };
 
   useEffect(() => {
@@ -151,7 +155,7 @@ export default function Configuracion() {
   async function guardar(parte, datos, mensaje) {
     setOcupado(parte);
     try {
-      aplicar(await api.guardarConfig(datos));
+      aplicar(await api.guardarConfig(datos), parte);
       avisar(mensaje);
     } catch (e) {
       avisar(e.message, true);
@@ -265,13 +269,28 @@ export default function Configuracion() {
               <button className="boton" disabled={ocupado === "refrescar"}
                       onClick={async () => {
                         setOcupado("refrescar");
-                        try { aplicar(await api.actualizarDolar()); avisar("Cotización actualizada."); }
+                        try { aplicar(await api.actualizarDolar(), "dolar"); avisar("Cotización actualizada."); }
                         catch (e) { avisar(e.message, true); }
                         finally { setOcupado(""); }
                       }}>
                 {ocupado === "refrescar" ? "Consultando…" : "Actualizar ahora"}
               </button>
             )}
+          </div>
+        </section>
+
+        {/* Descuentos */}
+        <section className="bloque">
+          <div className="bloque-cabeza">
+            <div>
+              <h3>% Descuentos</h3>
+              <p className="ayuda">
+                {descuentos
+                  ? `General: ${descuentos.general}% · ${descuentos.cartas.length} ${descuentos.cartas.length === 1 ? "carta" : "cartas"} con descuento propio.`
+                  : "Descuento general y por carta."}
+              </p>
+            </div>
+            <button className="boton primario" onClick={() => setPanel(true)}>Gestionar descuentos</button>
           </div>
         </section>
 
@@ -363,20 +382,10 @@ export default function Configuracion() {
           </div>
         </section>
 
-        {/* Descuentos */}
-        <section className="bloque">
-          <div className="bloque-cabeza">
-            <div>
-              <h3>% Descuentos</h3>
-              <p className="ayuda">
-                {descuentos
-                  ? `General: ${descuentos.general}% · ${descuentos.cartas.length} ${descuentos.cartas.length === 1 ? "carta" : "cartas"} con descuento propio.`
-                  : "Descuento general y por carta."}
-              </p>
-            </div>
-            <button className="boton primario" onClick={() => setPanel(true)}>Gestionar descuentos</button>
-          </div>
-        </section>
+      </div>
+
+      <div className="hoja preferencias">
+        <BasesBot avisar={avisar} />
       </div>
 
       <div className="hoja preferencias">

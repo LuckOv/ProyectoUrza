@@ -30,6 +30,11 @@ function EditarCarta({ carta, grados, dolar, onCerrar, onGuardado }) {
 
   async function guardar() {
     setError("");
+    // Number("") es 0: un campo vacío ponía el stock en cero sin querer.
+    if (String(cantidad).trim() === "" || !Number.isInteger(Number(cantidad)) || Number(cantidad) < 0) {
+      setError("Poné cuántas unidades hay (0 o más, sin decimales).");
+      return;
+    }
     setOcupado(true);
     try {
       const r = await api.editarCarta(carta.id, {
@@ -190,9 +195,9 @@ function OtroGrado({ carta, todas, grados, dolar, onCerrar, onGuardado }) {
   );
 }
 
-/* Arriba de todo: las cartas cuyo precio de mercado (Scryfall) se movió mucho
-   desde que les pusiste precio. Se sugiere mover el tuyo en la misma
-   proporción (sirve igual para las graduadas). Un clic lo pone al día. */
+/* Arriba de todo: las cartas con el precio lejos del mercado de hoy, o cuyo
+   mercado (Scryfall) se movió mucho desde que les pusiste precio. Un clic
+   pone el sugerido; "Dejarlo así" deja de avisar hasta que cambies el precio. */
 function PreciosARevisar({ items, umbral, onActualizar, onMantener, onRefrescar, refrescando }) {
   const [abierto, setAbierto] = useState(true);
   if (!items.length) return null;

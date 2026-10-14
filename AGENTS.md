@@ -60,11 +60,20 @@ uv run python -m ingesta.ingestar_lore                # ambas fases en corrida
 uv run python -m ingesta.ingestar_lore --rebuild      # borra snapshot e índice y arranca de cero
 ```
 
+### Bases del bot desde el panel
+
+Configuración → **Bases del bot** (`frontend/src/vendedor/BasesBot.jsx`, `backend/panel/bot.py`): `GET /vendedor/bot` (estado: fragmentos de cada base contados directo del `chroma.sqlite3`, páginas del snapshot de lore, si está el modelo de rerank, librerías faltantes, y el trabajo en curso con las últimas líneas de salida), `POST /vendedor/bot/instalar {partes: ["reglas","modelos","lore"]}` y `POST /vendedor/bot/cancelar`. Corre las mismas ingestas como procesos aparte (`sys.executable -m ingesta...`, cwd `backend/`), de a una; reglas va con `--rebuild` si ya existía (si no, duplica) y lore con `--index` si la descarga ya está completa. Antes de rehacer una base suelta la que tenga abierta el servidor (`_vectorstore = None`); si Windows igual dice que el archivo está en uso, reiniciar el backend. Queda en el registro de actividad.
+
+### Uso desde la red y por internet
+
+El frontend le habla al backend en **la misma dirección de la página**, bajo `/api` (`src/*/api.js`, o `VITE_API` en `frontend/.env`), y Vite (`dev` y `preview`) hace de proxy de `/api` a `http://127.0.0.1:8000` (`vite.config.js`). Así el navegador usa una sola dirección: anda en localhost, por wifi (`server.host: true`, la dirección "Network") y por un **Cloudflare Quick Tunnel** (`cloudflared tunnel --url http://localhost:4173`, `allowedHosts: [".trycloudflare.com"]`). El backend no necesita `--host 0.0.0.0`. El CORS sigue aceptando localhost, redes privadas y `CORS_ORIGENES` por si se apunta el front directo al 8000.
+
+Link público: el panel detecta el túnel por los encabezados `cf-connecting-ip`/`cf-ray` (`panel/vendedor.py`): con la clave de fábrica responde 403 (hay que definir `VENDEDOR_CLAVE`) y frena a 8 intentos fallidos de clave cada 10 minutos por IP (429). En la compu/wifi no hay freno (si no, cambiar la clave con el panel abierto te bloqueaba).
+
 ### Estado de datos hoy
 
-- RAG de reglas: `backend/reglas_db/` presente (no hace falta re-correr `ingestar_reglas.py`).
-- RAG de lore: `backend/lore_db/` presente — 5038 chunks en la colección `lore_mtg`; snapshot `backend/lore/` con 5122 páginas bajadas (rondas `2026-09-24_r1` y `2026-09-24_r2`). No re-correr la ingesta salvo que se borre.
-- Stock, pedidos y configuración: `backend/urza.db` (gitignoreado; se crea solo y la primera vez importa `backend/inventario.csv`).
+- RAG de reglas y de lore: `backend/reglas_db/` y `backend/lore_db/` son locales (gitignoreados) y **cada compu del grupo tiene que generarlos** con la ingesta (ver arriba). La última ingesta de lore registrada: 5038 chunks en `lore_mtg`, snapshot `backend/lore/` con 5122 páginas (rondas `2026-09-24_r1` y `r2`). Si en una compu no están, Ajani y Teferi avisan qué comando correr en vez de romper.
+- Stock, pedidos y configuración: `backend/urza.db` (gitignoreado; se crea solo). `backend/inventario.csv` se importa **una sola vez** en la vida de la base (marca `csv_importado` en `config`): si después se borra todo el inventario, reiniciar no lo vuelve a cargar.
 
 ### Arquitectura (backend/)
 
@@ -104,7 +113,7 @@ backend/
 
 Tienda (`index.html` → `src/tienda/`): `App.jsx` (chat + flujo), `api.js` (fetch), `Carta3D.jsx` (carta 3D con selector de variante y precio en pesos), `Carrito.jsx` (cajón con "Finalizar compra", que manda el pedido de cierre al chat), `Bolitas.jsx`, `Abanico.jsx` (mazo en abanico que se achica al ancho del chat, sin scroll lateral), `Catalogo.jsx` (lista con buscador y filtros: color, M/C, grado/PSA, expansión, precio mín/máx, orden, con descuento), `FormPropuesta.jsx` (ofrecer una carta: autocompletado de Scryfall → edición → grado/cantidad/precio en $ o US$ → nombre, apellido y mail obligatorios), `../compartido/formato.js` (pesos/dólares), `styles.css`. El tope de stock del carrito se verifica en `tienda.agregar` (lo usan tanto el endpoint como la herramienta del agente).
 
-Panel del vendedor (`vendedor.html` → `src/vendedor/`): `Panel.jsx` (entrada con clave en `sessionStorage`, pestañas en el hash de la URL), `Inventario.jsx` (grilla, filtros, selección, edición, borrado), `AgregarCarta.jsx` (autocompletado de Scryfall → impresión → grado/cantidad/precio), `Pedidos.jsx` (calendario mensual por fecha de retiro, panel del día, nuevo pedido, editar, sacar), `Propuestas.jsx` (lista de propuestas con filtros por estado, buscador, nota interna, aceptar y cargar al inventario, rechazar, responder por mail; globito con las nuevas en la pestaña), `Dashboard.jsx` + `PanelesVentas.jsx` (torta de colores, lista de cartas, barras de expansiones, alertas) + `GraficoVentas.jsx`, `Historial.jsx` (tabla "Protocolo" con comentario editable y export CSV), `Configuracion.jsx` (horarios, dólar, stock bajo, panel de descuentos), `comunes.jsx`, `api.js`, `vendedor.css` (misma estética cuero/pergamino que la tienda).
+Panel del vendedor (`vendedor.html` → `src/vendedor/`): `Panel.jsx` (entrada con clave en `sessionStorage`, pestañas en el hash de la URL), `Inventario.jsx` (grilla, filtros, selección, edición, borrado), `AgregarCarta.jsx` (autocompletado de Scryfall → impresión → grado/cantidad/precio), `Pedidos.jsx` (calendario mensual por fecha de retiro, panel del día, nuevo pedido, editar, sacar), `Propuestas.jsx` (lista de propuestas con filtros por estado, buscador, nota interna, aceptar y cargar al inventario, rechazar; globito con las nuevas en la pestaña), `Dashboard.jsx` + `PanelesVentas.jsx` (torta de colores, lista de cartas, barras de expansiones, alertas) + `GraficoVentas.jsx`, `Historial.jsx` (tabla "Protocolo" con comentario editable y export CSV), `Configuracion.jsx` (horarios, dólar, stock bajo, panel de descuentos), `comunes.jsx`, `api.js`, `vendedor.css` (misma estética cuero/pergamino que la tienda).
 
 ### Reglas del repo
 
@@ -115,10 +124,26 @@ Panel del vendedor (`vendedor.html` → `src/vendedor/`): `Panel.jsx` (entrada c
 - Los datos de reglas salen de `consultar_reglas_mtg` y se transmiten tal cual (la palabra del juez).
 - Los datos de lore salen de `consultar_lore_mtg` y se transmiten tal cual (la palabra del erudito).
 
+### Pruebas (`backend/tests/`)
+
+```powershell
+cd backend
+uv run --with pytest python -m pytest tests -q
+```
+~107 pruebas de integración contra la API real (FastAPI `TestClient`), sin red ni API key: copian el backend a una carpeta temporal con una base nueva por prueba, simulan Scryfall y dolarapi (`tests/falsos/red.py`, incluye fallas: sin red, timeout, 429, JSON roto) y reemplazan Groq por uno falso que sigue un guion (`tests/falsos/langchain_groq.py`) y **valida el historial como la API real** (un pedido de herramienta sin respuesta = error 400). Cubren inventario, alertas de precio, descuentos, carrito, retiros, pedidos (incluida la confirmación en paralelo de la última copia), propuestas, dashboard, configuración, que todo `/vendedor/*` pida clave, migraciones, una copia de `backend/urza.db` si existe, y el chat de punta a punta (compra completa, mazo, propuesta, reglas, fallas de Scryfall y de Groq, historial largo).
+
+Garantías que cubren las pruebas (no romper):
+- **Stock**: `_crear_pedido` corre dentro de `tienda._transaccion()` (`BEGIN IMMEDIATE`): dos confirmaciones a la vez no reservan la misma copia; las líneas repetidas de un pedido se suman; el carrito se relee dentro de la transacción (un doble clic no duplica el pedido). El dólar se refresca **antes** de abrir la transacción (refrescarlo adentro escribe desde otra conexión y se traba).
+- **Chat**: el `ToolNode` tiene `handle_tool_errors` (una herramienta que falla vuelve como mensaje, no corta el turno); `agent_sales._reparar` completa pedidos de herramienta sin respuesta y `_recortar` manda a Groq sólo los últimos `MAX_MENSAJES` (30) empezando en un mensaje del jugador; `sin_razonamiento` saca los `<think>…</think>` de Qwen3. `/chat` limita `texto` a 2000 caracteres.
+- **Planilla de venta**: el respaldo de `api.py` no actúa si en el turno se usaron reglas, lore, mazos, carrito o compra; "tengo X a N" sólo cuenta como venta si N parece un precio.
+- `base.conectar()` cierra la conexión al salir del `with` (antes quedaban abiertas hasta el recolector).
+- Un pedido (chat o manual) no puede incluir cartas sin precio. El mail de las propuestas sólo acepta caracteres comunes (misma regla en `FormPropuesta.jsx`). `inventario.csv` se lee como `utf-8-sig` (Excel le pone BOM).
+- Frontend: el catálogo se pide una vez al abrirse; en Configuración cada "Guardar" actualiza sólo su sección; `Confirmar` muestra el error si la acción falla.
+
 ### Deuda técnica / pendientes operativos
 
-- `main` quedó 1 commit adelante de `origin/main` (`f2cc8aa`, FE-07). El avance de lore está pusheado a la branch remota `feat/fe-07-lore`; falta decidir merge/PR a main.
 - Los modelos de HuggingFace se descargan la primera vez (lento; sin `HF_TOKEN` aparece warning).
+- `POST /propuestas` es público (cualquiera puede mandar propuestas): tiene validación y topes de largo, pero no límite de cantidad por IP.
 - `frontend/node_modules` fue trackeado por error en commits viejos; se corrigió para dejar de seguirlo (historial queda pesado si se clona).
 
 ---
@@ -152,12 +177,12 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 **FE-05 · Juez de reglas con RAG** — **[Implementado]** (commit `d2aec80`)
 - *Como* jugador, *quiero* resolver una jugada o interacción, *para* jugar bien sin discutir.
 - Comportamiento: el agente detecta consulta de reglas → `consultar_reglas_mtg` (Chroma + rerank + LLM juez) → responde citando números de regla. El juez solo usa el contexto provisto.
-- Aceptación: pregunta de timing (ej. "¿puedo responder con un instante antes de que la criatura muera?") → responde con base legal y `Bases consultadas: NNN, NNN`. Si no se ingirió el RAG, avisa que corran `ingestar_reglas.py` en vez de romper.
+- Aceptación: pregunta de timing (ej. "¿puedo responder con un instante antes de que la criatura muera?") → responde con base legal y `Bases consultadas: NNN, NNN`. Si no se ingirió el RAG, avisa que corran `uv run python -m ingesta.ingestar_reglas` en vez de romper.
 
 **FE-07 · Agente de Lore** — **[Implementado]**
 - *Como* jugador, *quiero* preguntar por la historia/narrativa de MTG (planos, personajes, trasfondo de cartas), *para* conocer el lore.
 - Comportamiento: el agente detecta consulta de lore → `consultar_lore_mtg` (subagente erudito en `lore.py`, espejo del juez FE-05: traduce ES→EN, `similarity_search` k=15, rerank k=6, ChatGroq) → responde citando los artículos de origen. Corpus = intros de la MTG Wiki (`ingestar_lore.py`, ETL resumible en `backend/lore/`).
-- Aceptación: "¿Quién fue Urza?" → respuesta con fuentes y `Fuentes consultadas: ...`; pregunta de reglas NO se desvía a lore (va a `consultar_reglas_mtg`); si no se ingirió `lore_db/`, avisa que corran `ingestar_lore.py` en vez de romper.
+- Aceptación: "¿Quién fue Urza?" → respuesta con fuentes y `Fuentes consultadas: ...`; pregunta de reglas NO se desvía a lore (va a `consultar_reglas_mtg`); si no se ingirió `lore_db/`, avisa que corran `uv run python -m ingesta.ingestar_lore` en vez de romper.
 - FE-08 (alta de stock del vendedor) ya está resuelto desde el panel Mesa Central (FE-11).
 
 ### Pendientes (por prioridad)
@@ -207,7 +232,7 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - *Como* jugador, *quiero* ofrecerle una carta a la tienda ("tengo X en PSA 9 a $Y"), *para* vendérsela.
 - El agente llama `iniciar_propuesta` y aparece el formulario: la carta **se elige de la lista de todas las cartas existentes** (Scryfall) y la edición exacta; si el cliente la nombró, el agente le pide que la busque en la lista para mayor precisión. **Nombre, apellido y mail son obligatorios** (validados en el front y en `propuestas._validar`); el agente nunca dice que se envió hasta que se manda el formulario (`POST /propuestas`).
 - La planilla aparece **siempre**, aunque el modelo no llame a la herramienta: `api.py` usa `propuestas.quiere_vender(texto)` (reglas fijas: "vendo", "quiero venderles", "tengo X PSA 9 a $Y", "me la comprás"… y nunca "¿venden X?") y la precarga con `propuestas.datos_desde_texto` (carta, PSA, precio, moneda, cantidad). Cuando se abre la planilla no se muestra la carta 3D de la tienda. Además, el chat tiene el botón **Ofrecer una carta a la tienda** (y la sugerencia "Quiero venderles una carta") que la abre al toque sin pasar por el agente.
-- Panel → pestaña **Propuestas** (`GET/PATCH/DELETE /vendedor/propuestas`, `POST /vendedor/propuestas/{id}/al-inventario`).
+- Panel → pestaña **Propuestas** (`GET/PATCH/DELETE /vendedor/propuestas`, `POST /vendedor/propuestas/{id}/al-inventario`). Una propuesta se carga al inventario **una sola vez** (columna `cargada`); una aceptada "sin cargar" se puede cargar después.
 
 **FE-17 · Dashboard de movimientos y alertas** — **[Implementado]**
 - Movimientos de cartas por período (30 / 90 días / todo): **color más vendido** (torta), **cartas más vendidas** (lista), **expansiones más vendidas** (barras). Los colores se guardan en `pedido_items.colores` (ventas viejas sin color salen como "Sin dato").

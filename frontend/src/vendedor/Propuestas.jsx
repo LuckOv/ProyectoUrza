@@ -163,7 +163,6 @@ export default function Propuestas() {
         {(datos?.propuestas || []).map((p) => {
           const { unidad, otro } = precioOfrecido(p, datos.dolar);
           const est = ESTADOS_PROPUESTA[p.estado];
-          const asunto = encodeURIComponent(`Tu propuesta #${p.id}: ${p.carta}`);
           return (
             <li key={p.id} className="hoja propuesta-v">
               {p.imagen ? <img src={p.imagen} alt="" className="propuesta-v-img" /> : <div className="propuesta-v-img vacia" />}
@@ -179,7 +178,7 @@ export default function Propuestas() {
                 </div>
                 <p>
                   <strong>{p.nombre} {p.apellido}</strong> ·{" "}
-                  <a href={`mailto:${p.email}?subject=${asunto}`}>{p.email}</a>
+                  <span>{p.email}</span>
                 </p>
                 {p.comentario_cliente && <p className="comentario">“{p.comentario_cliente}”</p>}
                 <p className="apagado chico">
@@ -193,18 +192,18 @@ export default function Propuestas() {
                   {p.estado !== "en_revision" && p.estado !== "aceptada" && (
                     <button className="boton chico" onClick={() => cambiar(p, "en_revision")}>En revisión</button>
                   )}
-                  {p.estado !== "aceptada" && (
+                  {!p.cargada && (
                     <button className="boton chico primario" onClick={() => setModal({ tipo: "inventario", propuesta: p })}>
-                      <Icono nombre="check" tam={14} /> Aceptar y cargar al inventario
+                      <Icono nombre="check" tam={14} /> {p.estado === "aceptada" ? "Cargar al inventario" : "Aceptar y cargar al inventario"}
                     </button>
                   )}
+                  {p.cargada === 1 && <Etiqueta tono="stock-ok">En el inventario</Etiqueta>}
                   {p.estado !== "aceptada" && (
                     <button className="boton chico" onClick={() => cambiar(p, "aceptada")}>Aceptar sin cargar</button>
                   )}
                   {p.estado !== "rechazada" && (
                     <button className="boton chico peligro-suave" onClick={() => cambiar(p, "rechazada")}>Rechazar</button>
                   )}
-                  <a className="boton chico" href={`mailto:${p.email}?subject=${asunto}`}>Responder por mail</a>
                   <button className="boton chico" onClick={() => setModal({ tipo: "borrar", propuesta: p })} aria-label="Borrar propuesta">
                     <Icono nombre="borrar" tam={14} />
                   </button>

@@ -1,10 +1,11 @@
 r"""API HTTP de URZA.
 
-Va en backend/, al lado de graph.py.
+Va en backend/ (los módulos están en agentes/, tienda/ y panel/).
 
 Levantar con:
     ..\.venv\Scripts\python.exe -m uvicorn api:app --reload --port 8000
-(parado dentro de la carpeta backend)
+(parado dentro de la carpeta backend). El frontend le habla a través del proxy
+/api de Vite, así que no hace falta abrirla a la red.
 
 Probar que anda:          http://localhost:8000/salud
 Ver todos los endpoints:  http://localhost:8000/docs
@@ -14,14 +15,17 @@ charla (uno por pestaña), el mismo que usa el grafo para su memoria. La
 compra se cierra desde el chat: el agente pide nombre, apellido y día y hora
 de retiro, y registra el pedido.
 
-El panel del vendedor (Mesa Central) usa los endpoints de vendedor.py, todos
+El panel del vendedor (Mesa Central) usa los endpoints de panel/vendedor.py, todos
 bajo /vendedor y protegidos con la clave VENDEDOR_CLAVE del .env.
 """
 
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from tienda import base
 from tienda import cartas
@@ -30,6 +34,7 @@ from tienda import propuestas
 from tienda import tienda
 from panel import vendedor
 
+load_dotenv()
 app = FastAPI(title="URZA API")
 
 # Crea o migra las tablas; la primera vez importa el inventario.csv viejo y
@@ -38,12 +43,21 @@ base.preparar()
 inventario.importar_csv_viejo()
 inventario.completar_en_segundo_plano()
 
-# Cualquier puerto de localhost: Vite salta del 5173 al 5174 si el primero
-# está ocupado, y con una lista fija el navegador bloquearía el pedido por
-# CORS. En producción esto se reemplaza por el dominio real.
+# Cualquier puerto de esta compu (Vite salta del 5173 al 5174 si el primero
+# está ocupado) y de la red de la casa (192.168.x.x, 10.x.x.x, 172.16-31.x.x):
+# así se puede usar la tienda desde el celular o desde otra compu conectada
+# al mismo wifi. En producción esto se reemplaza por el dominio real.
+# Otra red (ej. la del instituto): CORS_ORIGENES en backend/.env, separadas
+# por coma, ej. CORS_ORIGENES=http://10.20.30.40:5173
+_ORIGENES_EXTRA = [o.strip() for o in os.getenv("CORS_ORIGENES", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origins=_ORIGENES_EXTRA,
+    allow_origin_regex=(
+        r"http://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+"
+    ),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -55,8 +69,9 @@ app.include_router(vendedor.protegido)
 # --- modelos de entrada ------------------------------------------------------
 
 class Consulta(BaseModel):
-    thread_id: str
-    texto: str
+    thread_id: str = Field(min_length=1, max_length=100)
+    # Tope de largo: un mensaje gigante se come el cupo de tokens de Groq.
+    texto: str = Field(min_length=1, max_length=2000)
 
 
 class ItemCarrito(BaseModel):
@@ -152,6 +167,11 @@ _grafo = None
 # si el jugador saca una carta del carrito, no tiene sentido volver a mostrarla.
 _SIN_CARTA = {"quitar_del_carrito"}
 
+# Si en el turno se usó alguna de éstas, el jugador no estaba vendiendo una
+# carta: el respaldo de la planilla de propuesta no tiene que pisar la respuesta.
+_NO_ES_VENTA = {"consultar_reglas_mtg", "consultar_lore_mtg", "sugerir_cartas_mazo", "agregar_al_carrito",
+                "ver_carrito", "quitar_del_carrito", "confirmar_compra", "listar_cartas_disponibles"}
+
 # Qué planeswalker del equipo de Urza está detrás de cada herramienta.
 AGENTE_DE = {
     "consultar_reglas_mtg": "Ajani",
@@ -166,6 +186,11 @@ def _obtener_grafo():
         from agentes.graph import app_graph
         _grafo = app_graph
     return _grafo
+
+
+def sin_razonamiento(texto) -> str:
+    from agentes.agent_sales import sin_razonamiento as limpiar
+    return limpiar(texto)
 
 
 @app.get("/salud")
@@ -249,11 +274,12 @@ def chat(consulta: Consulta):
             if quien not in agentes:
                 agentes.append(quien)
 
-    texto = str(tramo[-1].content).strip() if tramo else ""
+    texto = sin_razonamiento(tramo[-1].content) if tramo else ""
 
     # El jugador quiere venderle una carta a la tienda pero el modelo no abrió
     # el formulario: se abre igual, precargado con lo que se pudo leer del mensaje.
-    if propuesta is None and propuestas.quiere_vender(consulta.texto):
+    usadas = {h["nombre"] for h in herramientas}
+    if propuesta is None and not (usadas & _NO_ES_VENTA) and propuestas.quiere_vender(consulta.texto):
         propuesta = propuestas.datos_desde_texto(consulta.texto)
         texto = propuestas.TEXTO_FORMULARIO
         if "Tibalt" not in agentes:

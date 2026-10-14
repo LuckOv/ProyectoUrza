@@ -1,8 +1,9 @@
+import re
 from datetime import timedelta
 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 
 from tienda import base
 from agentes.tools import lista_tools
@@ -88,7 +89,54 @@ def system_prompt() -> SystemMessage:
     ))
 
 
+# Cuántos mensajes del historial se le mandan a Groq por turno. La charla
+# completa queda guardada en la memoria del grafo, pero el plan gratis tiene
+# tope de tokens por minuto: mandar 80 mensajes en una charla larga lo pasa.
+# ~30 mensajes alcanzan para una compra entera (carrito, nombre, horario).
+MAX_MENSAJES = 30
+
+_PENSAMIENTO = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL | re.IGNORECASE)
+
+
+def sin_razonamiento(texto) -> str:
+    """Qwen3 a veces manda su razonamiento entre <think>…</think>: el jugador no tiene que verlo."""
+    return _PENSAMIENTO.sub("", str(texto or "")).strip()
+
+
+def _reparar(mensajes: list) -> list:
+    """Groq rechaza el pedido si un mensaje del asistente llamó herramientas y
+    alguna quedó sin respuesta (pasa si un turno se cortó a la mitad). Se
+    completan esas respuestas faltantes para que la charla pueda seguir."""
+    reparados = []
+    pendientes = []
+    for m in mensajes:
+        if pendientes and m.type != "tool":
+            reparados += [ToolMessage(content="(sin respuesta: se cortó la consulta)", tool_call_id=i) for i in pendientes]
+            pendientes = []
+        if m.type == "tool" and m.tool_call_id in pendientes:
+            pendientes.remove(m.tool_call_id)
+        if m.type == "ai":
+            pendientes = [tc["id"] for tc in (getattr(m, "tool_calls", None) or [])]
+        reparados.append(m)
+    reparados += [ToolMessage(content="(sin respuesta: se cortó la consulta)", tool_call_id=i) for i in pendientes]
+    return reparados
+
+
+def _recortar(mensajes: list) -> list:
+    """Los últimos MAX_MENSAJES, empezando siempre en un mensaje del jugador
+    (si se corta en medio de una llamada a herramienta, Groq lo rechaza)."""
+    if len(mensajes) <= MAX_MENSAJES:
+        return mensajes
+    desde = len(mensajes) - MAX_MENSAJES
+    for i in range(desde, len(mensajes)):
+        if mensajes[i].type == "human":
+            return mensajes[i:]
+    # Un solo turno larguísimo: desde el último mensaje del jugador.
+    ultimos = [i for i, m in enumerate(mensajes) if m.type == "human"]
+    return mensajes[ultimos[-1]:] if ultimos else mensajes[-MAX_MENSAJES:]
+
+
 def agente_ventas(messages):
     # Inyectamos el prompt del sistema (armado en el momento) al principio
-    messages_con_sistema = [system_prompt()] + messages
+    messages_con_sistema = [system_prompt()] + _recortar(_reparar(list(messages)))
     return agente_ventas_base.invoke(messages_con_sistema)

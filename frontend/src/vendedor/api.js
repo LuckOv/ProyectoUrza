@@ -2,7 +2,11 @@
    X-Vendedor-Clave; se guarda en sessionStorage, así al cerrar el
    navegador hay que volver a entrar. */
 
-const API = "http://localhost:8000";
+// Los pedidos van a /api en la MISMA dirección de la página y Vite se los
+// pasa al backend (ver vite.config.js). Así anda igual en esta compu, desde
+// el celular por wifi y por el link del túnel de Cloudflare.
+// Para apuntar a otro backend: VITE_API=http://... en frontend/.env
+const API = import.meta.env.VITE_API || "/api";
 const LLAVE = "urza_vendedor";
 
 function leer() { try { return sessionStorage.getItem(LLAVE) || ""; } catch { return ""; } }
@@ -22,7 +26,7 @@ async function pedir(ruta, { metodo = "GET", cuerpo, crudo = false, clave } = {}
       body: cuerpo ? JSON.stringify(cuerpo) : undefined,
     });
   } catch {
-    throw new Error(`No pude contactar la API en ${API}. Fijate que uvicorn esté corriendo.`);
+    throw new Error("No pude contactar el servidor de URZA. Fijate que el backend (uvicorn) esté corriendo.");
   }
   if (r.status === 401 && ruta !== "/vendedor/entrar") {
     olvidarClave();
@@ -30,7 +34,12 @@ async function pedir(ruta, { metodo = "GET", cuerpo, crudo = false, clave } = {}
   }
   if (crudo && r.ok) return r;
   const datos = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(datos.detail || `Error ${r.status}`);
+  const detalle = Array.isArray(datos.detail) ? datos.detail.map((d) => d.msg).join(" · ") : datos.detail;
+  // Si el backend está apagado, el proxy de Vite responde 500/502 sin detalle.
+  if (!r.ok && !detalle && r.status >= 500) {
+    throw new Error("No pude contactar el servidor de URZA. Fijate que el backend (uvicorn) esté corriendo.");
+  }
+  if (!r.ok) throw new Error(detalle || `Error ${r.status}`);
   return datos;
 }
 
@@ -83,6 +92,9 @@ export const borrarPropuesta = (id) => pedir(`/vendedor/propuestas/${id}`, { met
 export const actividad = (filtros = {}) => pedir(`/vendedor/actividad${qs(filtros)}`);
 
 export const config = () => pedir("/vendedor/config");
+export const bot = () => pedir("/vendedor/bot");
+export const instalarBot = (partes) => pedir("/vendedor/bot/instalar", { metodo: "POST", cuerpo: { partes } });
+export const cancelarBot = () => pedir("/vendedor/bot/cancelar", { metodo: "POST" });
 export const guardarConfig = (datos) => pedir("/vendedor/config", { metodo: "PUT", cuerpo: datos });
 export const actualizarDolar = () => pedir("/vendedor/config/dolar/actualizar", { metodo: "POST" });
 

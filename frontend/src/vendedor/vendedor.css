@@ -985,7 +985,11 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
 .alertas-botones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 760px) {
   .alertas-lista li { grid-template-columns: 36px minmax(0, 1fr); }
+  /* precios, etiqueta y botones van en su propia fila, a todo el ancho */
+  .alertas-lista li > :nth-child(n + 3) { grid-column: 1 / -1; justify-self: start; }
   .alertas-precios { text-align: left; }
+  .alertas-botones { justify-content: flex-start; }
+  .alertas-precio .lista-cabeza { flex-direction: column; align-items: stretch; gap: 10px; }
 }
 
 /* --- propuestas --------------------------------------------------------------------- */
@@ -1066,6 +1070,7 @@ a.boton { text-decoration: none; }
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
+  pointer-events: none;      /* nunca bloquea un botón que quede abajo (ej. el pie de un modal) */
   margin: 0;
   max-width: min(560px, 90vw);
   padding: 11px 20px;
@@ -1078,6 +1083,10 @@ a.boton { text-decoration: none; }
   animation: subir 0.25s ease-out;
 }
 .aviso.error { border-color: #e3a898; color: #ffd9cf; }
+/* En celular el aviso va arriba: abajo tapaba el pie de los modales (Guardar, Cancelar). */
+@media (max-width: 640px) {
+  .aviso { bottom: auto; top: 12px; }
+}
 @keyframes subir { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* --- entrada -------------------------------------------------------------------- */
@@ -1142,4 +1151,21 @@ a.boton { text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .ficha, .medidor-barra, .velo, .aviso, .girando { transition: none; animation: none; }
+}
+
+/* --- bases del bot (Configuración) ---------------------------------------------- */
+
+.bot-filas { display: flex; flex-direction: column; margin-top: 10px; }
+.bot-fila {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
+  padding: 10px 0; border-top: 1px solid #d9c7a4;
+}
+.bot-fila .ayuda { margin: 2px 0 0; }
+.bot-trabajo { margin-top: 12px; }
+.bot-trabajo-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
+.bot-trabajo-cabeza .girando { display: inline-block; vertical-align: -3px; }
+.bot-log {
+  margin: 0; max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: 8px;
+  background: #23170f; color: #e9dcc0; font: 0.78rem/1.45 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word;
 }

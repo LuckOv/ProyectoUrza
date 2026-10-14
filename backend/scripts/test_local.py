@@ -6,7 +6,10 @@ if __package__ in (None, ""):
     _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 
 from langchain_core.messages import HumanMessage
+from tienda import base
 from agentes.graph import app_graph
+
+base.preparar()   # crea las tablas si la base todavía no existe
 
 print("\n" + "="*50)
 print("🤖 Urza MVP (Agente de Ventas) - Entorno de Pruebas")

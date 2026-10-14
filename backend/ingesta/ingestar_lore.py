@@ -5,9 +5,9 @@ conexiones intermitentes y para producción: la descarga es resumible y
 nunca pierde lo ya bajado.
 
 Uso (parado dentro de backend/):
-    uv run python ingestar_lore.py            # baja (si falta) e indexa
-    uv run python ingestar_lore.py --solo-bajar   # solo red → snapshot en backend/lore/
-    uv run python ingestar_lore.py --index        # solo índice offline → backend/lore_db/
+    uv run python -m ingesta.ingestar_lore            # baja (si falta) e indexa
+    uv run python -m ingesta.ingestar_lore --solo-bajar   # solo red → snapshot en backend/lore/
+    uv run python -m ingesta.ingestar_lore --index        # solo índice offline → backend/lore_db/
 
 Si la red corta a mitad de una corrida, volvé a correr el mismo comando: el
 crawler retoma donde quedó (salta categorías completadas y páginas ya bajadas).

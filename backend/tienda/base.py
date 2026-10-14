@@ -67,8 +67,24 @@ def ahora_iso() -> str:
     return ahora().isoformat(timespec="seconds")
 
 
+class _Conexion(sqlite3.Connection):
+    """Conexión que, usada con `with`, confirma (o deshace) y además se cierra.
+
+    El `with` de sqlite3 sólo hace commit/rollback y deja la conexión abierta
+    hasta que la junte el recolector; acá se cierra en el momento.
+    """
+
+    def __exit__(self, tipo, valor, traza):
+        try:
+            return super().__exit__(tipo, valor, traza)
+        finally:
+            self.close()
+
+
 def conectar():
-    con = sqlite3.connect(BASE)
+    # timeout: si otro pedido está escribiendo, se espera en vez de fallar
+    # con "database is locked" (pasa cuando dos clientes confirman a la vez).
+    con = sqlite3.connect(BASE, timeout=15, factory=_Conexion)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     return con
@@ -209,6 +225,8 @@ def preparar():
         _agregar_columna(con, "inventario", "precio_aceptado_usd", "REAL")
         _agregar_columna(con, "pedido_items", "colores", "TEXT")
         _agregar_columna(con, "pedido_items", "set_codigo", "TEXT")
+        # 1 = la propuesta ya se cargó al inventario (evita cargarla dos veces).
+        _agregar_columna(con, "propuestas", "cargada", "INTEGER NOT NULL DEFAULT 0")
         con.execute(f"PRAGMA user_version = {VERSION_ESQUEMA}")
 
         for clave, valor in CONFIG_INICIAL.items():
@@ -216,6 +234,16 @@ def preparar():
                 "INSERT OR IGNORE INTO config (clave, valor) VALUES (?, ?)",
                 (clave, json.dumps(valor)),
             )
+        # El inventario.csv viejo se importa una sola vez en la vida de la base.
+        # En bases que ya tienen cartas o actividad se da por importado: así,
+        # si el vendedor borra todo, reiniciar no resucita las cartas del CSV.
+        ya_usada = con.execute(
+            "SELECT (SELECT COUNT(*) FROM inventario) + (SELECT COUNT(*) FROM movimientos)"
+        ).fetchone()[0]
+        con.execute(
+            "INSERT OR IGNORE INTO config (clave, valor) VALUES ('csv_importado', ?)",
+            (json.dumps(bool(ya_usada)),),
+        )
 
 
 # --- configuración -----------------------------------------------------------

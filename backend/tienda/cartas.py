@@ -26,11 +26,12 @@ _pool_standard = {"total": None, "cuando": 0.0}
 
 
 def _pedir(url):
+    """GET a Scryfall. None si no responde, no es 200 o la respuesta no es JSON."""
     try:
         r = requests.get(url, headers=HEADERS, timeout=8)
-    except requests.RequestException:
+        return r.json() if r.status_code == 200 else None
+    except (requests.RequestException, ValueError):
         return None
-    return r.json() if r.status_code == 200 else None
 
 
 def resolver_nombre(nombre: str):
@@ -258,7 +259,7 @@ def precios_actuales(scryfall_ids: list) -> dict:
                 headers=HEADERS, timeout=15,
             )
             datos = r.json() if r.status_code == 200 else {}
-        except requests.RequestException:
+        except (requests.RequestException, ValueError):
             datos = {}
         for c in datos.get("data", []):
             precios = c.get("prices") or {}
@@ -354,10 +355,10 @@ def total_pool_standard():
 # --- armado de mazos -------------------------------------------------------------
 
 COLORES = {
-    "blanco": "W", "blanca": "W", "blancos": "W", "w": "W",
+    "blanco": "W", "blanca": "W", "blancos": "W", "blancas": "W", "w": "W",
     "azul": "U", "azules": "U", "u": "U",
-    "negro": "B", "negra": "B", "negros": "B", "b": "B",
-    "rojo": "R", "roja": "R", "rojos": "R", "r": "R",
+    "negro": "B", "negra": "B", "negros": "B", "negras": "B", "b": "B",
+    "rojo": "R", "roja": "R", "rojos": "R", "rojas": "R", "r": "R",
     "verde": "G", "verdes": "G", "g": "G",
     "incoloro": "C", "incolora": "C", "c": "C",
 }

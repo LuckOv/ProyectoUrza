@@ -55,9 +55,12 @@ export default function Historial() {
 
   useEffect(() => {
     // Pausa corta para que la búsqueda no dispare un pedido por tecla.
+    // `vigente`: si cambiás el filtro mientras llega una respuesta vieja, se descarta.
+    let vigente = true;
     const t = setTimeout(() => {
       api.pedidos(filtros)
         .then((r) => {
+          if (!vigente) return;
           // Lo más nuevo arriba.
           const orden = por === "pedido"
             ? (a, b) => b.creado.localeCompare(a.creado)
@@ -65,9 +68,9 @@ export default function Historial() {
           setPedidos([...r.pedidos].sort(orden));
           setError("");
         })
-        .catch((e) => setError(e.message));
+        .catch((e) => vigente && setError(e.message));
     }, 250);
-    return () => clearTimeout(t);
+    return () => { vigente = false; clearTimeout(t); };
   }, [q, estado, desde, hasta, por]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const reemplazar = (p) => setPedidos((ps) => ps.map((x) => (x.id === p.id ? p : x)));

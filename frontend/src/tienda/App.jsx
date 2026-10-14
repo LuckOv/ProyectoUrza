@@ -91,7 +91,9 @@ function trazaDe(herramientas) {
 export default function App() {
   // Un thread_id por pestaña: el historial lo guarda el checkpointer del grafo
   // y el carrito queda atado a este mismo id (no hay cuentas de usuario).
-  const [threadId] = useState(() => crypto.randomUUID());
+  // crypto.randomUUID sólo existe en localhost o https: si se abre desde
+  // otra compu de la red (http://192.168...), se arma un id igual de único.
+  const [threadId] = useState(() => crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
   const [mensajes, setMensajes] = useState([]);
   const [entrada, setEntrada] = useState("");
   const [pensando, setPensando] = useState(false);
@@ -220,7 +222,7 @@ export default function App() {
         {unidades > 0 && (
           <button
             className={`carrito-boton${latido ? " latido" : ""}`}
-            onClick={() => setPanel("carrito")}
+            onClick={() => { setAviso(""); setPanel("carrito"); }}
             aria-label={`Carrito, ${unidades} cartas`}
           >
             <IconoCarrito />
@@ -290,6 +292,7 @@ export default function App() {
             className="entrada"
             value={entrada}
             placeholder="Preguntá lo que quieras"
+            maxLength={2000}
             onChange={(e) => setEntrada(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && enviar(entrada)}
             disabled={pensando}

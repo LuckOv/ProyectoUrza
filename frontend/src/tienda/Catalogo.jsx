@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import * as api from "./api.js";
 import { pesos } from "../compartido/formato.js";
@@ -47,12 +47,17 @@ export default function Catalogo({ onCerrar }) {
   const [conDescuento, setConDescuento] = useState(false);
   const [orden, setOrden] = useState("nombre");
 
+  // La lista se pide una sola vez al abrir. (Antes el efecto dependía de
+  // onCerrar, que es una función nueva en cada render del chat, y se volvía
+  // a pedir el catálogo entero cada vez que algo cambiaba en la página.)
+  const cerrarRef = useRef(onCerrar);
+  cerrarRef.current = onCerrar;
   useEffect(() => {
     api.catalogo().then((r) => setItems(r.items)).catch((e) => setError(e.message));
-    const tecla = (e) => e.key === "Escape" && onCerrar();
+    const tecla = (e) => e.key === "Escape" && cerrarRef.current();
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
-  }, [onCerrar]);
+  }, []);
 
   const expansiones = useMemo(
     () => [...new Set((items || []).map((i) => i.set_nombre).filter(Boolean))].sort(),

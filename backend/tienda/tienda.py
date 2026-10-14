@@ -15,6 +15,7 @@ El vendedor puede mover un pedido entre estados desde su panel; el stock se
 acomoda solo según el estado.
 """
 
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
 from tienda import base
@@ -34,6 +35,22 @@ def _recortar(texto: str, largo: int = 90) -> str:
 def _fecha_corta(iso: str) -> str:
     """'2026-09-29' → '29/09'."""
     return f"{iso[8:10]}/{iso[5:7]}"
+
+
+@contextmanager
+def _transaccion():
+    """Transacción que toma el turno de escritura desde el principio.
+
+    Con BEGIN IMMEDIATE, si dos clientes confirman a la vez, el segundo
+    espera a que termine el primero y recién ahí lee el stock: nunca se
+    reserva dos veces la misma copia.
+
+    Ojo: mientras está abierta, otra conexión no puede escribir. Por eso el
+    dólar (que en automático se guarda al refrescarse) se actualiza antes.
+    """
+    with base.conectar() as con:
+        con.execute("BEGIN IMMEDIATE")
+        yield con
 
 
 # --- carrito -----------------------------------------------------------------
@@ -133,9 +150,14 @@ def _parsear(fecha: str, hora: str):
         d = date.fromisoformat(str(fecha).strip())
     except ValueError:
         raise ValueError(f"La fecha '{fecha}' no es válida (formato AAAA-MM-DD).")
-    try:
-        h = datetime.strptime(str(hora).strip(), "%H:%M").time()
-    except ValueError:
+    texto_hora = str(hora).strip()
+    for formato in ("%H:%M", "%H:%M:%S"):   # el modelo a veces manda "17:00:00"
+        try:
+            h = datetime.strptime(texto_hora, formato).time().replace(second=0)
+            break
+        except ValueError:
+            continue
+    else:
         raise ValueError(f"La hora '{hora}' no es válida (formato HH:MM).")
     return d, h
 
@@ -179,18 +201,36 @@ def _crear_pedido(con, lineas: list, nombre: str, apellido: str, fecha: str, hor
 
     `lineas` = [{"inventario_id", "cantidad"}]. Si alguna carta no alcanza,
     levanta ValueError y la transacción entera se deshace.
+
+    `con` tiene que venir de _transaccion(): así dos clientes que confirman a
+    la vez no pueden llevarse la misma última copia.
     """
-    detalle = []
+    # La misma carta en dos líneas se suma: si no, cada línea se comparaba
+    # sola contra el stock y se podía vender más de lo que hay.
+    pedido = {}
     for linea in lineas:
-        v = inventario.obtener(linea["inventario_id"])
+        cantidad = int(linea["cantidad"])
+        if cantidad < 1:
+            raise ValueError("Cada carta del pedido tiene que tener al menos 1 unidad.")
+        pedido[linea["inventario_id"]] = pedido.get(linea["inventario_id"], 0) + cantidad
+
+    detalle = []
+    for item_id, cantidad in pedido.items():
+        v = inventario.obtener(item_id)
         if not v:
             raise ValueError("Una de las cartas ya no está en el inventario.")
-        if v["cantidad"] < linea["cantidad"]:
+        if v["precio_ars"] is None:
+            raise ValueError(f"'{v['nombre']}' ({v['grado']}) no tiene precio cargado: ponele precio antes de venderla.")
+        # El stock se relee dentro de la transacción (la de `obtener` podría
+        # estar vieja si otro pedido se confirmó recién).
+        fila = con.execute("SELECT cantidad FROM inventario WHERE id = ?", (item_id,)).fetchone()
+        quedan = fila["cantidad"] if fila else 0
+        if quedan < cantidad:
             raise ValueError(
                 f"Ya no alcanza el stock de '{v['nombre']}' ({v['grado']}): "
-                f"quedan {v['cantidad']}, pediste {linea['cantidad']}."
+                f"quedan {quedan}, pediste {cantidad}."
             )
-        detalle.append((v, linea["cantidad"]))
+        detalle.append((v, cantidad))
 
     total = round(sum((v["precio_ars"] or 0) * c for v, c in detalle), 2)
     cur = con.execute(
@@ -210,7 +250,8 @@ def _crear_pedido(con, lineas: list, nombre: str, apellido: str, fecha: str, hor
             (pedido_id, v["id"], v["nombre"], v["set_nombre"], v.get("set_codigo"), v.get("colores"),
              v["grado"], v["precio_ars"], cant),
         )
-        inventario.mover_stock(con, v["id"], -cant)
+        if not inventario.mover_stock(con, v["id"], -cant):
+            raise ValueError(f"Ya no alcanza el stock de '{v['nombre']}' ({v['grado']}).")
 
     unidades = sum(c for _, c in detalle)
     base.registrar_movimiento(
@@ -229,15 +270,17 @@ def confirmar_pedido(thread_id: str, nombre: str, apellido: str, fecha_retiro: s
         raise ValueError("Falta el nombre y apellido de quien retira.")
     fecha, hora = validar_retiro(fecha_retiro, hora_retiro)
 
-    items = ver_carrito(thread_id)
-    if not items:
-        raise ValueError("El carrito está vacío: no hay nada para confirmar.")
-
-    with base.conectar() as con:
-        pedido_id = _crear_pedido(
-            con, [{"inventario_id": i["inventario_id"], "cantidad": i["cantidad"]} for i in items],
-            nombre, apellido, fecha, hora, "chat", thread_id,
-        )
+    inventario.valor_dolar()   # refresca el dólar ANTES de tomar el turno de escritura (ver _transaccion)
+    with _transaccion() as con:
+        # El carrito se lee dentro de la transacción: si llegan dos
+        # confirmaciones de la misma charla (doble clic), la segunda lo
+        # encuentra vacío en vez de duplicar el pedido.
+        lineas = [dict(f) for f in con.execute(
+            "SELECT inventario_id, cantidad FROM carrito WHERE thread_id = ? ORDER BY agregado", (thread_id,)
+        ).fetchall()]
+        if not lineas:
+            raise ValueError("El carrito está vacío: no hay nada para confirmar.")
+        pedido_id = _crear_pedido(con, lineas, nombre, apellido, fecha, hora, "chat", thread_id)
         con.execute("DELETE FROM carrito WHERE thread_id = ?", (thread_id,))
     return obtener_pedido(pedido_id)
 
@@ -256,7 +299,8 @@ def crear_pedido_manual(nombre: str, apellido: str, fecha_retiro: str, hora_reti
     if not lineas:
         raise ValueError("El pedido tiene que tener al menos una carta.")
 
-    with base.conectar() as con:
+    inventario.valor_dolar()   # ver _transaccion
+    with _transaccion() as con:
         pedido_id = _crear_pedido(
             con, lineas, nombre, apellido, d.isoformat(), h.strftime("%H:%M"),
             "vendedor", None, (comentario or "").strip(),

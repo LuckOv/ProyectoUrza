@@ -790,6 +790,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 12;
+  pointer-events: none;      /* nunca bloquea un botón que quede abajo */
   margin: 0;
   padding: 11px 20px;
   border-radius: 20px;

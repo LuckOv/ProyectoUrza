@@ -212,6 +212,9 @@ def guardar_descuento_general(porcentaje: float):
 def poner_descuento(inventario_ids: list, porcentaje: float):
     p = _validar_porcentaje(porcentaje)
     with base.conectar() as con:
+        # Las cartas que ya no existen (borradas en otra pestaña) se ignoran.
+        existentes = {f["id"] for f in con.execute("SELECT id FROM inventario").fetchall()}
+        inventario_ids = [i for i in dict.fromkeys(inventario_ids) if i in existentes]
         nombres = [
             f"{f['nombre']} ({f['grado']})"
             for f in con.execute(
@@ -538,6 +541,24 @@ def editar(item_id: int, grado: str | None = None, precio_usd: float | None = No
         raise ValueError("El precio no puede ser negativo.")
 
     with base.conectar() as con:
+        if nuevo_grado != actual["grado"]:
+            # La misma impresión no puede quedar dos veces con el mismo grado.
+            if actual["scryfall_id"]:
+                otra = con.execute(
+                    "SELECT id FROM inventario WHERE scryfall_id = ? AND grado = ? AND id != ?",
+                    (actual["scryfall_id"], nuevo_grado, item_id),
+                ).fetchone()
+            else:
+                otra = con.execute(
+                    """SELECT id FROM inventario WHERE nombre = ? AND IFNULL(set_codigo,'') = IFNULL(?,'')
+                          AND grado = ? AND id != ?""",
+                    (actual["nombre"], actual["set_codigo"], nuevo_grado, item_id),
+                ).fetchone()
+            if otra:
+                raise ValueError(
+                    f"Ya tenés {actual['nombre']} ({actual['set_nombre'] or 'sin set'}) en {nuevo_grado} "
+                    f"(URZ-{otra['id']:04d}). Sumale las unidades a esa en vez de cambiar el grado."
+                )
         con.execute(
             "UPDATE inventario SET grado = ?, precio_usd = ?, cantidad = ?, actualizado = ? WHERE id = ?",
             (nuevo_grado, nuevo_precio, nueva_cantidad, base.ahora_iso(), item_id),
@@ -599,12 +620,15 @@ def importar_csv_viejo():
     El CSV sólo tiene nombre, edición y cantidad: la imagen, el número y el
     precio se completan después desde Scryfall (completar_desde_scryfall).
     """
-    if not base.CSV_VIEJO.exists():
+    if not base.CSV_VIEJO.exists() or base.config("csv_importado"):
         return 0
     with base.conectar() as con:
         if con.execute("SELECT COUNT(*) FROM inventario").fetchone()[0]:
+            base.guardar_config("csv_importado", True)
             return 0
-        with open(base.CSV_VIEJO, encoding="utf-8") as f:
+        # utf-8-sig: si el CSV se guardó desde Excel trae BOM y la primera
+        # columna dejaba de llamarse "Carta".
+        with open(base.CSV_VIEJO, encoding="utf-8-sig") as f:
             filas = list(csv.DictReader(f))
         for fila in filas:
             edicion = fila.get("Edición") or ""
@@ -620,6 +644,7 @@ def importar_csv_viejo():
             "entrada", "Importación del CSV", f"{len(filas)} cartas desde inventario.csv",
             sum(int(f.get("Cantidad") or 0) for f in filas), con=con,
         )
+    base.guardar_config("csv_importado", True)
     return len(filas)
 
 

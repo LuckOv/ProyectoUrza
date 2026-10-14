@@ -13,7 +13,7 @@ Es el mismo patrón del subagente juez de reglas (FE-05, reglas.py): reutiliza
 sus singletons (traductor ES->EN, embeddings, reranker y ChatGroq) y solo
 cambia la base vectorial y el rol. La base se carga una sola vez por proceso;
 si todavía no se ingirió, la herramienta avisa en vez de romper. La ingesta se
-hace con ingestar_lore.py.
+hace con `uv run python -m ingesta.ingestar_lore` (parado en backend/).
 """
 
 from pathlib import Path
@@ -21,7 +21,8 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
-from agentes.reglas import _funcion_embedding, _funcion_rerank, _juez_llm, _traducir, motivo_no_disponible
+from agentes.reglas import (_funcion_embedding, _funcion_rerank, _juez_llm, _traducir, motivo_no_disponible,
+                            sin_razonamiento)
 
 # Chroma se importa recién al cargar la base (cargar_rag): arrastra torch, que
 # algunos Windows bloquean. Así un bloqueo sólo apaga el lore, no el agente.
@@ -90,7 +91,7 @@ def consultar_lore_mtg(pregunta: str) -> str:
     if vs is None:
         return (
             "Todavía no tengo cargada la base de lore en el servidor. "
-            "Avisá que corran 'uv run python ingestar_lore.py' dentro de backend/."
+            "Avisá que corran 'uv run python -m ingesta.ingestar_lore' dentro de backend/."
         )
 
     # La wiki está en inglés; traducir la pregunta mejora la recuperación. Si no
@@ -128,4 +129,4 @@ def consultar_lore_mtg(pregunta: str) -> str:
             f"{contexto}"
         )
 
-    return f"{respuesta.content.strip()}\n\nFuentes consultadas: {_citar_fuentes(mejores)}"
+    return f"{sin_razonamiento(respuesta.content)}\n\nFuentes consultadas: {_citar_fuentes(mejores)}"

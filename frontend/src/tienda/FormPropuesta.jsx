@@ -4,7 +4,8 @@ import * as api from "./api.js";
 import { dolares } from "../compartido/formato.js";
 
 const GRADOS = ["Sin graduar", ...Array.from({ length: 10 }, (_, i) => `PSA ${10 - i}`)];
-const MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+// Misma regla que el backend (tienda/propuestas.py).
+const MAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
 
 /* Formulario para que el cliente le ofrezca una carta a la tienda. Aparece en
    el chat cuando Tibalt detecta que el jugador quiere vender.

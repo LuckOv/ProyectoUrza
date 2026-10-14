@@ -6,6 +6,7 @@ __pycache__/
 key.txt
 urza.db
 node_modules/
+.pytest_cache/
 
 # Datos del RAG de reglas: regenerables con ingestar_reglas.py
 backend/reglas/

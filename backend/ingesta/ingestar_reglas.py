@@ -1,12 +1,12 @@
 """Ingesta de las Reglas Completas de MTG en la base vectorial Chroma.
 
 Uso (parado dentro de backend/):
-    uv run python ingestar_reglas.py
+    uv run python -m ingesta.ingestar_reglas
 
 Sin argumentos descarga el archivo oficial más reciente conocido desde
 media.wizards.com. También se puede pasar una ruta o URL propia:
 
-    uv run python ingestar_reglas.py https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.txt
+    uv run python -m ingesta.ingestar_reglas https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.txt
 
 El texto crudo queda en backend/reglas/comp_rules.txt (gitignoreado) y los
 embeddings persistidos en backend/reglas_db/.
