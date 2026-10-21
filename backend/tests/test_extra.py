@@ -164,34 +164,7 @@ def test_mail_raro_en_propuesta(cliente):
         assert r.status_code == 400, mail
 
 
-def test_panel_por_el_link_publico_con_clave_de_fabrica(cliente, monkeypatch):
-    """Por el túnel de Cloudflare (encabezado cf-connecting-ip) no se entra con la clave 'urza'."""
-    monkeypatch.delenv("VENDEDOR_CLAVE")
-    tunel = {"cf-connecting-ip": "200.1.2.3"}
-    r = cliente.post("/vendedor/entrar", json={"clave": "urza"}, headers=tunel)
-    assert r.status_code == 403 and "VENDEDOR_CLAVE" in r.json()["detail"]
-    assert cliente.get("/vendedor/inventario", headers={**tunel, "X-Vendedor-Clave": "urza"}).status_code == 403
-    # desde esta compu (sin túnel) sí, como siempre
-    assert cliente.post("/vendedor/entrar", json={"clave": "urza"}).status_code == 200
-    # y con clave propia, por el túnel también
-    monkeypatch.setenv("VENDEDOR_CLAVE", "otra-clave")
-    assert cliente.post("/vendedor/entrar", json={"clave": "otra-clave"}, headers=tunel).status_code == 200
-
-
-def test_freno_a_los_que_prueban_claves(cliente):
-    from panel import vendedor
-    vendedor._fallidos.clear()
-    ip = {"cf-connecting-ip": "200.9.9.9"}
-    for _ in range(vendedor.INTENTOS_MAX):
-        assert cliente.post("/vendedor/entrar", json={"clave": "mala"}, headers=ip).status_code == 401
-    r = cliente.post("/vendedor/entrar", json={"clave": "clave-test"}, headers=ip)
-    assert r.status_code == 429, "después de muchos intentos tiene que frenar aunque ahora acierte"
-    # otra IP no queda bloqueada
-    assert cliente.post("/vendedor/entrar", json={"clave": "clave-test"}, headers={"cf-connecting-ip": "200.8.8.8"}).status_code == 200
-    vendedor._fallidos.clear()
-
-
-def test_en_esta_compu_no_hay_freno(cliente):
+def test_claves_malas_no_bloquean(cliente):
     """Si cambiás la clave con el panel abierto, la pestaña vieja manda muchas claves malas: no te bloquea."""
     for _ in range(20):
         assert cliente.get("/vendedor/inventario", headers={"X-Vendedor-Clave": "vieja"}).status_code == 401

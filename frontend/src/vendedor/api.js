@@ -3,8 +3,8 @@
    navegador hay que volver a entrar. */
 
 // Los pedidos van a /api en la MISMA dirección de la página y Vite se los
-// pasa al backend (ver vite.config.js). Así anda igual en esta compu, desde
-// el celular por wifi y por el link del túnel de Cloudflare.
+// pasa al backend (ver vite.config.js). Así anda igual en esta compu y desde
+// el celular u otra compu del mismo wifi.
 // Para apuntar a otro backend: VITE_API=http://... en frontend/.env
 const API = import.meta.env.VITE_API || "/api";
 const LLAVE = "urza_vendedor";

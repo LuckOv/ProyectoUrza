@@ -86,30 +86,6 @@ Todo corre en la compu que levanta el backend: los demás sólo necesitan el nav
 2. `npm run dev` muestra dos direcciones: `Local` y `Network` (por ejemplo `http://192.168.0.15:5173`). Desde el otro dispositivo abrí la de **Network**.
 3. La primera vez Windows pregunta si deja pasar a Node por el firewall: aceptá para **redes privadas**.
 
-### Compartirlo por internet (link gratis de Cloudflare)
-
-Para que alguien lo use desde otra casa. Es gratis y no necesita cuenta. El link cambia cada vez y funciona mientras tu compu esté prendida con todo corriendo.
-
-1. **Una sola vez**, instalá `cloudflared` (PowerShell):
-   ```powershell
-   winget install --id Cloudflare.cloudflared
-   ```
-   (cerrá y abrí PowerShell después de instalarlo).
-2. **Poné una clave propia del panel** en `backend/.env` (`VENDEDOR_CLAVE=algo-dificil`) y reiniciá el backend. Por el link público el panel no deja entrar con la clave de fábrica `urza`, y frena a quien pruebe muchas claves.
-3. Levantá el backend como siempre. Para el frontend, en vez de `npm run dev` usá la versión compilada, que carga más rápido:
-   ```powershell
-   cd frontend
-   npm run build
-   npm run preview
-   ```
-4. En **otra** ventana de PowerShell:
-   ```powershell
-   cloudflared tunnel --url http://localhost:4173
-   ```
-   Después de unos segundos aparece un link `https://...trycloudflare.com`. Ese es el que compartís: la tienda es el link y el panel es el link + `/vendedor.html`.
-
-Para cortarlo: `Ctrl+C` en esa ventana. (Con `npm run dev` también anda: en ese caso el túnel va a `http://localhost:5173`.)
-
 ### Bases del bot (reglas y lore)
 
 Ajani (reglas) y Teferi (lore) responden buscando en dos bases que se arman en la compu que corre el backend y **no se suben a git**. Se instalan desde el panel: **Configuración → Bases del bot → Instalar todo** (muestra el avance; las reglas tardan minutos, el lore puede tardar horas y si se corta retoma). También se pueden copiar las carpetas `backend/reglas_db`, `backend/lore_db` y `backend/lore` de un compañero que ya las tenga.
@@ -132,7 +108,7 @@ cd backend
 uv run --with pytest python -m pytest tests -q
 ```
 
-Si todo está bien, al final dice algo como `107 passed` y ningún `failed`.
+Si todo está bien, al final dice algo como `105 passed` y ningún `failed`.
 
 ## Problemas comunes
 

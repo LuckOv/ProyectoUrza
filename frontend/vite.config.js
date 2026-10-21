@@ -19,11 +19,10 @@ export default defineConfig({
   // host: true → también se puede abrir desde otros dispositivos del mismo
   // wifi (Vite muestra la dirección "Network" al arrancar).
   // proxy: la página le pasa al backend todo lo que empieza con /api. Así el
-  // navegador habla con UNA sola dirección (la de la página), que es lo que
-  // necesita el túnel de Cloudflare para compartir el proyecto por internet.
-  // allowedHosts: deja entrar por los links de trycloudflare.com.
-  server: { port: 5173, host: true, proxy: API_PROXY, allowedHosts: [".trycloudflare.com"] },
-  preview: { port: 4173, host: true, proxy: API_PROXY, allowedHosts: [".trycloudflare.com"] },
+  // navegador habla con UNA sola dirección (la de la página) y anda igual en
+  // esta compu que desde otro dispositivo del wifi.
+  server: { port: 5173, host: true, proxy: API_PROXY },
+  preview: { port: 4173, host: true, proxy: API_PROXY },
   build: {
     rollupOptions: {
       input: {

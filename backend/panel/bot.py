@@ -178,6 +178,7 @@ def _correr(pasos: list):
         for linea in proc.stdout:          # text=True parte también en \r (barras de progreso)
             _anotar(linea)
         codigo = proc.wait()
+        proc.stdout.close()
         _proceso["p"] = None
         if _proceso["cancelar"]:
             resultado, mensaje = "cancelado", "Instalación cancelada. El lore retoma donde quedó la próxima vez."
