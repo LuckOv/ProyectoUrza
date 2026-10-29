@@ -13,8 +13,34 @@ load_dotenv()
 # max_tokens acotado: sin esto Groq reserva el máximo del modelo y el plan
 # gratuito rechaza el pedido con 429 (límite de 1000 tokens de salida por
 # minuto). Las respuestas de stock y precio son cortas, 500 sobra.
-llm = ChatGroq(model="qwen/qwen3.8-27b", temperature=0, max_tokens=500)
-agente_ventas_base = llm.bind_tools(lista_tools)
+_llm = None
+_agente_ventas_base = None
+
+
+def _obtener_llm():
+    global _llm
+    if _llm is None:
+        load_dotenv(override=True)
+        _llm = ChatGroq(model="qwen/qwen3.8-27b", temperature=0, max_tokens=500)
+    return _llm
+
+
+def _obtener_agente_ventas_base():
+    global _agente_ventas_base
+    if _agente_ventas_base is None:
+        _agente_ventas_base = _obtener_llm().bind_tools(lista_tools)
+    return _agente_ventas_base
+
+
+class _AgenteProxy:
+    def invoke(self, *args, **kwargs):
+        return _obtener_agente_ventas_base().invoke(*args, **kwargs)
+
+    def bind_tools(self, *args, **kwargs):
+        return _obtener_llm().bind_tools(*args, **kwargs)
+
+
+agente_ventas_base = _AgenteProxy()
 
 # Prompt del sistema para guiar la conducta del agente y el uso de herramientas.
 # Tiene dos huecos que se llenan en cada turno: la fecha de hoy (para que el
@@ -139,4 +165,4 @@ def _recortar(mensajes: list) -> list:
 def agente_ventas(messages):
     # Inyectamos el prompt del sistema (armado en el momento) al principio
     messages_con_sistema = [system_prompt()] + _recortar(_reparar(list(messages)))
-    return agente_ventas_base.invoke(messages_con_sistema)
+    return _obtener_agente_ventas_base().invoke(messages_con_sistema)
