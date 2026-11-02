@@ -115,14 +115,14 @@ def test_borrar_carta_con_descuento_y_en_carrito(cliente):
     assert cliente.get("/vendedor/descuentos", headers=CLAVE).json()["cartas"] == []
 
 
-def test_catalogo_solo_con_stock_y_precio(cliente):
+def test_catalogo_con_stock_aunque_no_tenga_precio(cliente):
     a = alta(cliente, "Get Lost", cantidad=2, precio=3)
     b = alta(cliente, "Heartfire Hero", cantidad=1, precio=1)
     cliente.patch(f"/vendedor/inventario/{b['id']}", headers=CLAVE, json={"cantidad": 0})
     sp = alta(cliente, "Sin Precio", cantidad=5)          # Scryfall sin precio y el vendedor no puso
     assert sp["precio_usd"] is None
-    ids = [i["id"] for i in cliente.get("/catalogo").json()["items"]]
-    assert ids == [a["id"]]
+    ids = sorted(i["id"] for i in cliente.get("/catalogo").json()["items"])
+    assert ids == sorted([a["id"], sp["id"]])             # la sin stock no; la sin precio sí
 
 
 def test_alerta_precio_lejos_del_mercado(cliente):

@@ -115,6 +115,10 @@ def _scryfall(url, cuerpo=None):
             return Resp(200, {"total_cards": 3876, "data": []})
         if "f:" in q:
             return Resp(200, {"data": [cs[0] for n, cs in TODAS.items() if n != "Sin Precio"]})
+        m = re.match(r'name:"(.+?)"$', q)
+        if m:
+            d = [cs[0] for n, cs in sorted(TODAS.items()) if _plano(m.group(1)) in _plano(n)]
+            return Resp(200, {"data": d}) if d else Resp(404, {"object": "error"})
         m = re.match(r'!"(.+?)"(?:\s+set:(\w+))?', q)
         if m:
             n = _exacta(m.group(1))

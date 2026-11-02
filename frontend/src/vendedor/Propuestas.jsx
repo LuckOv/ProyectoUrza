@@ -103,8 +103,13 @@ export default function Propuestas() {
 
   async function cargar() {
     try {
-      setDatos(await api.propuestas({ estado, q: q.trim() }));
+      const r = await api.propuestas({ estado, q: q.trim() });
+      setDatos(r);
       setError("");
+      // Que el globito de la pestaña se actualice ya (aceptar, rechazar, borrar...).
+      if (typeof r.nuevas === "number") {
+        window.dispatchEvent(new CustomEvent("urza:propuestas-nuevas", { detail: r.nuevas }));
+      }
     } catch (e) {
       setError(e.message);
     }

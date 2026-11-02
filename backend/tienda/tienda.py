@@ -97,8 +97,8 @@ def agregar(thread_id: str, inventario_id: int, cantidad: int = 1) -> list:
         raise ValueError("Esa carta no figura en el inventario de la tienda.")
     if variante["cantidad"] <= 0:
         raise ValueError(f"No queda stock de '{variante['nombre']}' ({variante['set_nombre']}, {variante['grado']}).")
-    if variante["precio_ars"] is None:
-        raise ValueError(f"'{variante['nombre']}' todavía no tiene precio cargado; consultalo con el vendedor.")
+    # Una carta sin precio cargado igual se puede llevar: el precio se
+    # confirma en el local al retirar (el chat y el carrito lo avisan).
 
     with base.conectar() as con:
         fila = con.execute(
@@ -219,8 +219,8 @@ def _crear_pedido(con, lineas: list, nombre: str, apellido: str, fecha: str, hor
         v = inventario.obtener(item_id)
         if not v:
             raise ValueError("Una de las cartas ya no está en el inventario.")
-        if v["precio_ars"] is None:
-            raise ValueError(f"'{v['nombre']}' ({v['grado']}) no tiene precio cargado: ponele precio antes de venderla.")
+        # Sin precio cargado se vende igual: queda con precio vacío y el total
+        # no la suma (se cobra lo que se acuerde en el local).
         # El stock se relee dentro de la transacción (la de `obtener` podría
         # estar vieja si otro pedido se confirmó recién).
         fila = con.execute("SELECT cantidad FROM inventario WHERE id = ?", (item_id,)).fetchone()

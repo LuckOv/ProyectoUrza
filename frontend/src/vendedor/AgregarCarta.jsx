@@ -12,7 +12,12 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
   const [texto, setTexto] = useState("");
   const [sugerencias, setSugerencias] = useState([]);
   const [buscando, setBuscando] = useState(false);
-  const [resaltada, setResaltada] = useState(0);
+  // -1 = ninguna sugerencia elegida con las flechas: Enter busca lo escrito.
+  const [resaltada, setResaltada] = useState(-1);
+
+  // Enter sin elegir de la lista: todas las cartas cuyo nombre contiene lo escrito.
+  const [encontradas, setEncontradas] = useState(null);   // null = no se buscó
+  const [buscandoTodas, setBuscandoTodas] = useState(false);
 
   const [nombre, setNombre] = useState(null);
   const [impresiones, setImpresiones] = useState(null);
@@ -41,7 +46,7 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
     const espera = setTimeout(async () => {
       try {
         const r = await api.autocompletar(t);
-        if (n === pedidoActual.current) { setSugerencias(r.nombres); setResaltada(0); }
+        if (n === pedidoActual.current) { setSugerencias(r.nombres); setResaltada(-1); }
       } catch (e) {
         if (n === pedidoActual.current) setError(e.message);
       } finally {
@@ -51,7 +56,25 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
     return () => clearTimeout(espera);
   }, [texto, nombre]);
 
+  async function buscarTodas(escrito) {
+    setSugerencias([]);
+    setError("");
+    setBuscandoTodas(true);
+    setEncontradas([]);
+    try {
+      const r = await api.buscarCartas(escrito);
+      if (r.cartas.length === 1) { setEncontradas(null); elegirNombre(r.cartas[0].nombre); }
+      else setEncontradas(r.cartas);
+    } catch (e) {
+      setError(e.message);
+      setEncontradas(null);
+    } finally {
+      setBuscandoTodas(false);
+    }
+  }
+
   async function elegirNombre(n) {
+    setEncontradas(null);
     setNombre(n);
     setTexto(n);
     setSugerencias([]);
@@ -60,12 +83,17 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
     setError("");
     try {
       const r = await api.impresiones(n);
+      // Si se escribió a mano ("colosus hammer", en español...), Scryfall
+      // devuelve el nombre oficial: se muestra ese.
+      if (r.nombre && r.nombre !== n) { setNombre(r.nombre); setTexto(r.nombre); }
       setImpresiones(r.impresiones);
       setDolar(r.dolar);
       if (r.impresiones.length === 1) elegirImpresion(r.impresiones[0]);
     } catch (e) {
+      // No existe esa carta: se vuelve al buscador con lo escrito para corregirlo.
       setError(e.message);
-      setImpresiones([]);
+      setNombre(null);
+      setImpresiones(null);
     }
   }
 
@@ -82,10 +110,23 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
   }
 
   function teclaBusqueda(e) {
+    if (e.key === "Enter") {
+      // Enter: la sugerencia marcada con las flechas, o si no, lo que se escribió
+      // (no hace falta elegir de la lista).
+      e.preventDefault();
+      const escrito = texto.trim();
+      if (resaltada >= 0 && sugerencias[resaltada]) elegirNombre(sugerencias[resaltada]);
+      else if (escrito.length >= 2) {
+        const igual = sugerencias.find((s) => s.toLowerCase() === escrito.toLowerCase());
+        if (igual) elegirNombre(igual);       // escribiste el nombre completo
+        else buscarTodas(escrito);            // "colossus" → todas las que lo contienen
+      }
+      return;
+    }
+    if (e.key === "Escape" && sugerencias.length) { e.preventDefault(); setSugerencias([]); return; }
     if (!sugerencias.length) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setResaltada((i) => Math.min(i + 1, sugerencias.length - 1)); }
-    if (e.key === "ArrowUp") { e.preventDefault(); setResaltada((i) => Math.max(i - 1, 0)); }
-    if (e.key === "Enter") { e.preventDefault(); elegirNombre(sugerencias[resaltada]); }
+    if (e.key === "ArrowUp") { e.preventDefault(); setResaltada((i) => Math.max(i - 1, -1)); }
   }
 
   async function agregar(seguir) {
@@ -135,9 +176,9 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
           <Icono nombre="buscar" />
           <input
             value={texto}
-            onChange={(e) => { setTexto(e.target.value); if (nombre) volverABuscar(); }}
+            onChange={(e) => { setTexto(e.target.value); setEncontradas(null); if (nombre) volverABuscar(); }}
             onKeyDown={teclaBusqueda}
-            placeholder="Nombre de la carta (en inglés o en español)"
+            placeholder="Nombre de la carta (en inglés o en español) y Enter, o elegila de la lista"
             autoFocus
             role="combobox"
             aria-expanded={sugerencias.length > 0}
@@ -160,10 +201,37 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
             ))}
           </ul>
         )}
-        {!nombre && texto.trim().length >= 2 && !buscando && !sugerencias.length && (
-          <p className="ayuda">Scryfall no encontró cartas con ese nombre.</p>
+        {!nombre && encontradas === null && texto.trim().length >= 2 && !buscando && !sugerencias.length && (
+          <p className="ayuda">La lista no muestra nada con ese nombre: igual podés apretar Enter para buscarla.</p>
         )}
       </div>
+
+      {/* Enter sin elegir: todas las cartas con ese nombre */}
+      {!nombre && encontradas !== null && (
+        <div className="paso">
+          <div className="paso-cabeza">
+            <h3>
+              {buscandoTodas
+                ? "Buscando en Scryfall…"
+                : encontradas.length
+                  ? `Cartas con "${texto.trim()}" (${encontradas.length})`
+                  : `Ninguna carta tiene "${texto.trim()}" en el nombre`}
+            </h3>
+          </div>
+          {encontradas.length > 0 && (
+            <ul className="impresiones">
+              {encontradas.map((c) => (
+                <li key={c.nombre}>
+                  <button className="impresion" onClick={() => elegirNombre(c.nombre)} title={c.tipo || c.nombre}>
+                    {c.imagen ? <img src={c.imagen} alt="" loading="lazy" /> : <div className="ficha-sinimg">{c.nombre}</div>}
+                    <span className="impresion-nombre">{c.nombre}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Paso 2: impresión */}
       {nombre && (
@@ -194,6 +262,8 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
                     <span className="impresion-set">{imp.set_codigo} · #{imp.numero}</span>
                     <span className="impresion-nombre">{imp.set_nombre}</span>
                     <span className="impresion-precio">{dolares(imp.precio_usd)}</span>
+                    {imp.acabado === "foil" && <span className="impresion-acabado">Solo foil</span>}
+                    {imp.acabado === "etched" && <span className="impresion-acabado etched">Solo etched</span>}
                   </button>
                 </li>
               ))}
@@ -241,7 +311,7 @@ export default function AgregarCarta({ grados, inventario = [], onCerrar, onAgre
               <small>
                 {precioNum != null
                   ? `Se vende a ${pesos(Math.round(precioNum * dolar))} (dólar ${pesos(dolar)}, antes de descuentos).`
-                  : "Sin precio: el chat no la va a poder vender hasta que le pongas uno."}
+                  : "Sin precio: se puede comprar igual y el precio se confirma en el local."}
               </small>
             </label>
           </div>

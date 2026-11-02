@@ -40,8 +40,11 @@ def test_carrito_sin_stock_o_sin_precio(cliente):
     a = alta(cliente, "Get Lost", cantidad=1, precio=3)
     cliente.patch(f"/vendedor/inventario/{a['id']}", headers=CLAVE, json={"cantidad": 0})
     assert "No queda stock" in cliente.post("/carrito/t", json={"inventario_id": a["id"]}).json()["detail"]
+    # sin precio se puede llevar igual (el precio se confirma en el local)
     sp = alta(cliente, "Sin Precio", cantidad=1)
-    assert "precio" in cliente.post("/carrito/t", json={"inventario_id": sp["id"]}).json()["detail"]
+    r = cliente.post("/carrito/t", json={"inventario_id": sp["id"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["items"][0]["precio"] is None
 
 
 def test_validar_retiro():
@@ -217,3 +220,16 @@ def test_filtros_pedidos_y_csv(cliente):
     import csv, io
     filas = list(csv.reader(io.StringIO(r.text.lstrip("﻿")), delimiter=";"))
     assert len(filas) == 3 and filas[1][-1] == "con ; punto y coma"
+
+
+def test_compra_por_chat_con_carta_sin_precio(cliente):
+    """El carrito y el comprobante avisan que esa carta se cobra en el local."""
+    from agentes import tools
+    sp = alta(cliente, "Sin Precio", cantidad=2)
+    con = alta(cliente, "Get Lost", cantidad=2, precio=3)
+    tienda.agregar("charla", sp["id"], 1)
+    items = tienda.agregar("charla", con["id"], 1)
+    resumen = tools._resumen_carrito(items)
+    assert "sin precio (se confirma en el local)" in resumen and "se confirman en el local" in resumen
+    pedido = tienda.confirmar_pedido("charla", "Ana", "Paz", *proximo("mar"))
+    assert pedido["total"] == 3000 and len(pedido["items"]) == 2

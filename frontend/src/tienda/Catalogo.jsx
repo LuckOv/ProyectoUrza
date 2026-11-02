@@ -16,8 +16,9 @@ const COLORES = [
 
 const ORDENES = {
   nombre: { texto: "Nombre", fn: (a, b) => a.nombre.localeCompare(b.nombre) },
-  barato: { texto: "Más baratas", fn: (a, b) => a.precio_ars - b.precio_ars },
-  caro: { texto: "Más caras", fn: (a, b) => b.precio_ars - a.precio_ars },
+  // Las cartas sin precio van siempre al final.
+  barato: { texto: "Más baratas", fn: (a, b) => (a.precio_ars ?? Infinity) - (b.precio_ars ?? Infinity) },
+  caro: { texto: "Más caras", fn: (a, b) => (b.precio_ars ?? -Infinity) - (a.precio_ars ?? -Infinity) },
   stock: { texto: "Más stock", fn: (a, b) => b.cantidad - a.cantidad },
 };
 
@@ -77,7 +78,7 @@ export default function Catalogo({ onCerrar }) {
       .filter((i) => pasaColor(i.colores, colores))
       .filter((i) => !grado || (grado === "graduadas" ? i.grado !== "Sin graduar" : i.grado === grado))
       .filter((i) => !expansion || i.set_nombre === expansion)
-      .filter((i) => (min == null || i.precio_ars >= min) && (max == null || i.precio_ars <= max))
+      .filter((i) => (min == null || (i.precio_ars != null && i.precio_ars >= min)) && (max == null || (i.precio_ars != null && i.precio_ars <= max)))
       .filter((i) => !conDescuento || i.descuento > 0)
       .sort(ORDENES[orden].fn);
   }, [items, q, colores, grado, expansion, minimo, maximo, conDescuento, orden]);

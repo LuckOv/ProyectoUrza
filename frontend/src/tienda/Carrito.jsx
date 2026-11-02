@@ -6,6 +6,7 @@ import { pesos } from "../compartido/formato.js";
 export default function Carrito({ items, onQuitar, onVaciar, onFinalizar, onCerrar, ocupado }) {
   const total = items.reduce((suma, i) => suma + (i.precio || 0) * i.cantidad, 0);
   const unidades = items.reduce((suma, i) => suma + i.cantidad, 0);
+  const haySinPrecio = items.some((i) => i.precio == null);
 
   return (
     <div className="velo" onClick={onCerrar}>
@@ -42,6 +43,9 @@ export default function Carrito({ items, onQuitar, onVaciar, onFinalizar, onCerr
                 <span>{unidades} {unidades === 1 ? "carta" : "cartas"}</span>
                 <strong>{pesos(total)}</strong>
               </p>
+              {haySinPrecio && (
+                <p className="cajon-aviso-precio">+ las cartas sin precio, que se confirman en el local.</p>
+              )}
               <button className="cajon-finalizar" onClick={onFinalizar} disabled={ocupado}>
                 Finalizar compra
               </button>
