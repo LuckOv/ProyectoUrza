@@ -32,10 +32,10 @@
   --titulo: "Goudy Mediaeval", "Goudy Medieval Alternate", Georgia, serif;
   /* Flecha propia, con el azul del arco de la carta. El 2 2 es el hotspot:
      el punto exacto que hace clic, que cae en la punta. */
-  --flecha: url("/cursor-urza.png") 2 2, auto;
-  --flecha-hd: image-set(url("/cursor-urza.png") 1x, url("/cursor-urza@2x.png") 2x) 2 2, auto;
-  --clic: var(--flecha);  /* clickeables: la misma flecha azul */
-  --clic-hd: var(--flecha-hd);
+  --flecha: url("/cursor-urza.png") 1 1, auto;
+  --flecha-hd: image-set(url("/cursor-urza.png") 1x, url("/cursor-urza@2x.png") 2x) 1 1, auto;
+  --clic: url("/cursor-click.png") 12 1, pointer;
+  --clic-hd: image-set(url("/cursor-click.png") 1x, url("/cursor-click@2x.png") 2x) 12 1, pointer;
   --texto: url("/cursor-texto.png") 16 16, text;
   --texto-hd: image-set(url("/cursor-texto.png") 1x, url("/cursor-texto@2x.png") 2x) 16 16, text;
 }
