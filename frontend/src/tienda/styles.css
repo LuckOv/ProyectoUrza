@@ -805,6 +805,81 @@ body {
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* --- visión por computadora (Karn) --- */
+
+.boton-camara {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 175, 110, 0.35);
+  background: rgba(44, 25, 14, 0.85);
+  color: var(--oro);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+.boton-camara:hover:not(:disabled) {
+  background: rgba(70, 40, 22, 0.95);
+  border-color: var(--oro);
+  transform: scale(1.05);
+}
+.boton-camara:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preview-foto-adjunta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  background: rgba(30, 16, 9, 0.92);
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  border-radius: 12px;
+  animation: subir-aviso 0.2s ease-out;
+}
+.preview-foto-adjunta img {
+  width: 36px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--oro);
+}
+.preview-foto-adjunta span {
+  font-size: 0.85rem;
+  color: var(--crema);
+  flex: 1;
+}
+.preview-foto-adjunta button {
+  background: none;
+  border: none;
+  color: var(--crema-apagada);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.preview-foto-adjunta button:hover {
+  color: #ff8585;
+}
+
+.mensaje-foto {
+  margin-bottom: 8px;
+}
+.mensaje-foto img {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 110, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  object-fit: cover;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .carta3d-cuerpo, .carta3d-marco { transition: none; }
   .carrito-boton, .velo, .cajon, .aviso { animation: none; }

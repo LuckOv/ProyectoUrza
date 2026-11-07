@@ -14,6 +14,7 @@ const EQUIPO = {
   Ajani: "el juez",
   Teferi: "el historiador",
   Saheeli: "la armadora de mazos",
+  Karn: "el observador de ojos de plata",
 };
 
 function QuienResponde({ agentes }) {
@@ -98,6 +99,7 @@ export default function App() {
   const [entrada, setEntrada] = useState("");
   const [pensando, setPensando] = useState(false);
   const [verTrazas, setVerTrazas] = useState(false);
+  const [imagenAdjunta, setImagenAdjunta] = useState(null);
 
   const [items, setItems] = useState([]);
   const [panel, setPanel] = useState(null);        // "carrito" | "catalogo" | null
@@ -106,6 +108,7 @@ export default function App() {
   const [latido, setLatido] = useState(false);     // animación del ícono al sumar
 
   const finRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -120,6 +123,20 @@ export default function App() {
   function latir() {
     setLatido(true);
     setTimeout(() => setLatido(false), 600);
+  }
+
+  function onSeleccionarFoto(e) {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    const lector = new FileReader();
+    lector.onload = () => {
+      setImagenAdjunta({
+        base64: lector.result,
+        nombre: archivo.name,
+      });
+    };
+    lector.readAsDataURL(archivo);
+    e.target.value = "";
   }
 
   // La carta puede estar en varias variantes (set y grado): el botón manda
@@ -153,14 +170,18 @@ export default function App() {
 
   async function enviar(texto) {
     const consulta = (texto ?? "").trim();
-    if (!consulta || pensando) return;
+    const foto = imagenAdjunta?.base64 || null;
+    if ((!consulta && !foto) || pensando) return;
 
-    setMensajes((m) => [...m, { rol: "jugador", texto: consulta }]);
+    const textoVisible = consulta || (foto ? "📷 [Foto para que Karn analice]" : "");
+
+    setMensajes((m) => [...m, { rol: "jugador", texto: textoVisible, imagen: foto }]);
     setEntrada("");
+    setImagenAdjunta(null);
     setPensando(true);
 
     try {
-      const data = await api.preguntar(threadId, consulta);
+      const data = await api.preguntar(threadId, consulta, foto);
       setMensajes((m) => [
         ...m,
         data.error
@@ -240,6 +261,11 @@ export default function App() {
             return (
               <div key={i} className="turno">
                 {m.rol === "urza" && <QuienResponde agentes={m.agentes} />}
+                {m.imagen && (
+                  <div className="mensaje-foto">
+                    <img src={m.imagen} alt="Foto enviada" />
+                  </div>
+                )}
                 <div className={`msg ${m.rol}`}>
                   {m.texto}
                   {traza && <div className="traza">{traza}</div>}
@@ -287,11 +313,40 @@ export default function App() {
           <div ref={finRef} />
         </div>
 
+        {imagenAdjunta && (
+          <div className="preview-foto-adjunta">
+            <img src={imagenAdjunta.base64} alt="Foto para Karn" />
+            <span>Foto lista para que Karn la analice</span>
+            <button type="button" onClick={() => setImagenAdjunta(null)} title="Quitar foto">×</button>
+          </div>
+        )}
+
         <div className="barra">
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            onChange={onSeleccionarFoto}
+          />
+          <button
+            type="button"
+            className="boton-camara"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={pensando}
+            title="Sacar foto o subir imagen para Karn"
+            aria-label="Cámara o foto"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </button>
           <input
             className="entrada"
             value={entrada}
-            placeholder="Preguntá lo que quieras"
+            placeholder={imagenAdjunta ? "Preguntá sobre esta foto o enviala para identificarla..." : "Preguntá lo que quieras o sacá una foto..."}
             maxLength={2000}
             onChange={(e) => setEntrada(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && enviar(entrada)}
@@ -301,7 +356,7 @@ export default function App() {
           <button
             className="enviar"
             onClick={() => enviar(entrada)}
-            disabled={pensando || !entrada.trim()}
+            disabled={pensando || (!entrada.trim() && !imagenAdjunta)}
             aria-label="Enviar consulta"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"

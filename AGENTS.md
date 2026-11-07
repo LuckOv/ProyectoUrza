@@ -15,29 +15,32 @@ URZA es el asistente virtual de una tienda de cartas de **Magic: The Gathering**
 - **Ficha/datos de cartas** (tipo, colores, texto de reglas, legalidad — Scryfall).
 - **Reglas del juego** (RAG sobre las Comprehensive Rules oficiales → "subagente juez").
 - **Lore / historia** (RAG sobre la MTG Wiki → "subagente erudito").
+- **Visión por computadora** (VLM Gemini Flash → "subagente Karn"): reconocimiento de cartas físicas a partir de fotos (cámara o archivo) con consulta automática de stock, y análisis del campo de batalla con dictamen de jugadas junto al juez Ajani.
 
 No hay cuentas de jugador: el carrito se ata a la conversación (`thread_id`) y la compra se cierra desde el propio chat, que pide nombre, apellido y día y hora de retiro. El vendedor administra todo desde **Mesa Central** (`frontend/vendedor.html`), protegido con una clave. El front son dos páginas React/Vite (tienda + panel). Todo se habla en **español rioplatense**.
 
 ### Stack
 
 - Python **3.13** con gestor de paquetes **uv** (`pyproject.toml` + `uv.lock`, venv en `.venv/`).
-- Backend: **FastAPI** + **LangChain** + **LangGraph** (`StateGraph` + checkpointer `MemorySaver`).
+- Backend: **Django** + **Django Ninja** + **Django Admin** (`urza_core/`) + **LangChain** + **LangGraph** (`StateGraph` + checkpointer `MemorySaver`).
 - LLM: **ChatGroq**, modelo `qwen/qwen3.8-27b`, `temperature=0`, `max_tokens=500` (tope del plan free de Groq; sin eso da 429).
 - RAG de reglas: **Chroma** (`backend/reglas_db/`), embeddings `paraphrase-multilingual-MiniLM-L12-v2`, rerank `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, juez = mismo ChatGroq.
 - RAG de lore: **Chroma** (`backend/lore_db/`, colección `lore_mtg`), mismos embeddings/rerank/ChatGroq reusados de `reglas.py`; corpus = intros de la **MTG Wiki** (`mtg.fandom.com`).
 - Frontend: **React 19 + Vite 8**.
-- Datos: SQLite `backend/urza.db` (inventario, carrito por charla, pedidos, movimientos, config, descuentos), API de **Scryfall** (fichas, imágenes, impresiones), **dolarapi.com** (cotización). `backend/inventario.csv` sólo se usa para la importación inicial.
+- Datos: SQLite `backend/urza.db` mapeada con modelos Django ORM (`tienda.models`) e índices nativos, API de **Scryfall** (fichas, imágenes, impresiones), **dolarapi.com** (cotización). `backend/inventario.csv` sólo se usa para la importación inicial.
 
 ### Cómo levantarlo
 
-Credenciales en **`backend/.env`** (gitignoreado): `GROQ_API_KEY` (obligatoria), `VENDEDOR_CLAVE` (clave del panel; si falta, es `urza` y el panel lo avisa), `PRICECHARTING_TOKEN` (opcional, precios reales de graduadas) y `HF_TOKEN` (opcional, evita rate limits de HuggingFace). `load_dotenv()` (presente en `agentes/agent_sales.py` y `agentes/reglas.py`) busca el `.env` en el **directorio de trabajo**: arrancar siemPR desde `backend/`.
+Credenciales en **`backend/.env`** (gitignoreado): `GROQ_API_KEY` (obligatoria), `VENDEDOR_CLAVE` (clave del panel; si falta, es `urza` y el panel lo avisa), `PRICECHARTING_TOKEN` (opcional, precios reales de graduadas) y `HF_TOKEN` (opcional, evita rate limits de HuggingFace). `load_dotenv()` (presente en `urza_core/settings.py`, `agentes/agent_sales.py` y `agentes/reglas.py`) busca el `.env` en el **directorio de trabajo**: arrancar siempre desde `backend/`.
 
-**Backend** (parado en `backend/`):
+**Backend (Django)** (parado en `backend/`):
 ```powershell
-..\.venv\Scripts\python.exe -m uvicorn api:app --reload --port 8000
+..\.venv\Scripts\python.exe manage.py runserver 8000
 ```
 - `GET /salud` → dice si el grafo se inicializó bien.
-- `POST /chat` `{thread_id, texto}` → respuesta del agente + herramientas usadas + carta (si habló de una) + `carrito` actualizado + `pedido` (texto del comprobante si en ese turno se confirmó la compra).
+- `GET /docs` → documentación OpenAPI interactiva (Swagger) provista por Django Ninja.
+- `GET /admin/` → panel administrativo nativo de **Django Admin** (usuario `admin`, clave `urza123`).
+- `POST /chat` `{thread_id, texto}` → respuesta del agente + herramientas usadas + carta (si habló de una) + `carrito` actualizado + `pedido` (texto del comprobante si en ese turno se confirmó la compra). Protegido con rate-limiting nativo de Django.
 - Carrito por charla: `GET/POST/DELETE /carrito/{thread_id}` (el POST recibe `{inventario_id, cantidad}`), `DELETE /carrito/{thread_id}/{item_id}`.
 - `GET /carta?nombre=` → ficha para la carta 3D, con `variantes` (una por grado/set) y precio en pesos.
 - `GET /catalogo` → todas las variantes a la venta (con stock y precio), para la lista con buscador del chat.
@@ -103,6 +106,7 @@ backend/
 | `tienda/tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
 | `agentes/reglas.py` | **Ajani**, subagente juez (imports de torch/Chroma lazy; si faltan, `motivo_no_disponible` lo explica): traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
 | `agentes/lore.py` | **Teferi**, subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
+| `agentes/karn.py` | **Karn**, subagente de visión por computadora (Gemini 2.5 Flash): identifica cartas físicas desde fotos y analiza campos de batalla, conectando con Ajani para dictamen de jugadas. |
 | `ingesta/ingestar_reglas.py` | Descarga las Comprehensive Rules, las parte en chunks (1500 chars, overlap 200) con metadata `regla`/`titulo`/`seccion`, e indexa en Chroma. |
 | `ingesta/ingestar_lore.py` | ETL del lore **resumible**: baja la MTG Wiki (Fandom) con checkpoint en `backend/lore/` (`paginas.jsonl` append-only + `estado.json` + `ronda.json` con manifiesto por ronda), escaneando categorías raíz (BFS) y una lista curada de títulos; `--index` reconstruye `lore_db/` offline. |
 | `scripts/test_local.py` | Chat por consola para probar al agente sin front: `..\.venv\Scripts\python -m scripts.test_local`. |

@@ -42,8 +42,8 @@ export const quitarDelCarrito = (threadId, itemId) =>
 export const vaciarCarrito = (threadId) =>
   pedir(`/carrito/${id(threadId)}`, { metodo: "DELETE" });
 
-export const preguntar = (thread_id, texto) =>
-  pedir("/chat", { metodo: "POST", cuerpo: { thread_id, texto } });
+export const preguntar = (thread_id, texto, imagen_base64 = null) =>
+  pedir("/chat", { metodo: "POST", cuerpo: { thread_id, texto, imagen_base64 } });
 
 export const catalogo = () => pedir("/catalogo");
 

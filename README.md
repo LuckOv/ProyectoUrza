@@ -66,11 +66,13 @@ En `http://localhost:5173/vendedor.html`, con la clave de vendedor:
 
 ## Cómo levantarlo
 
-**Backend** (parado dentro de la carpeta `backend/`):
+**Backend (Django)** (parado dentro de la carpeta `backend/`):
 ```powershell
-..\.venv\Scripts\python.exe -m uvicorn api:app --reload --port 8000
+..\.venv\Scripts\python.exe manage.py runserver 8000
 ```
-Si todo anda, `http://localhost:8000/salud` responde `{"ok": true}`.
+- Estado de la API: `http://localhost:8000/salud` responde `{"ok": true}`.
+- Documentación interactiva (Swagger): `http://localhost:8000/docs`.
+- Panel **Django Admin**: `http://localhost:8000/admin/` (usuario `admin`, clave `urza123`).
 
 **Frontend** (parado dentro de la carpeta `frontend/`):
 ```powershell
