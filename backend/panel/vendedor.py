@@ -171,12 +171,26 @@ def autocompletar(q: str):
     return {"nombres": cartas.autocompletar(q)}
 
 
+@protegido.get("/scryfall/buscar")
+def buscar_cartas(q: str):
+    """Enter en "Agregar carta" sin elegir de la lista: todas las cartas con ese nombre."""
+    return {"cartas": cartas.cartas_con_nombre(q)}
+
+
 @protegido.get("/scryfall/impresiones")
 def impresiones(nombre: str):
+    # El nombre puede venir de la lista de Scryfall (exacto) o escrito a mano
+    # y confirmado con Enter: en ese caso se resuelve como en el chat
+    # (español, errores de tipeo, nombre incompleto) y se usa el oficial.
     lista = cartas.impresiones(nombre)
+    oficial = nombre
     if not lista:
-        raise HTTPException(status_code=404, detail=f"Scryfall no devolvió impresiones de '{nombre}'.")
-    return {"impresiones": lista, "dolar": inventario.valor_dolar()}
+        oficial = cartas.resolver_nombre(nombre) or nombre
+        if oficial != nombre:
+            lista = cartas.impresiones(oficial)
+    if not lista:
+        raise HTTPException(status_code=404, detail=f"Scryfall no encontró ninguna carta llamada '{nombre}'.")
+    return {"nombre": lista[0]["nombre"] or oficial, "impresiones": lista, "dolar": inventario.valor_dolar()}
 
 
 # --- pedidos -----------------------------------------------------------------

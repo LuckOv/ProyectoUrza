@@ -238,6 +238,9 @@ export default function App() {
     <div className="escena">
       {vacio && <Bolitas />}
 
+      {/* Logo de Magic chiquito en la esquina de abajo a la izquierda. */}
+      <img className="logo-magic" src="/logo-magic.png" alt="Magic: The Gathering" draggable="false" />
+
       <header className="barra-superior">
         {/* El carrito sólo se muestra cuando hay algo adentro. */}
         {unidades > 0 && (
@@ -253,6 +256,10 @@ export default function App() {
       </header>
 
       <main className={vacio ? "centro vacio" : "centro"}>
+        {/* Título de la tienda: grande al entrar, chico mientras se charla. */}
+        <div className="titulo">
+          <img className="titulo-logo" src="/titulo-deckwarden.png" alt="The Deckwarden" draggable="false" />
+        </div>
         {vacio && <h1 className="hero">¿Qué carta estás buscando?</h1>}
 
         <div className="scroll">

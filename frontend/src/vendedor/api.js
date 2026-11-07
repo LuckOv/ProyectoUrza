@@ -60,6 +60,7 @@ export const nuevaVariante = (id, datos) =>
 export const borrarCartas = (ids) => pedir("/vendedor/inventario/borrar", { metodo: "POST", cuerpo: { ids } });
 
 export const autocompletar = (q) => pedir(`/vendedor/scryfall/autocompletar${qs({ q })}`);
+export const buscarCartas = (q) => pedir(`/vendedor/scryfall/buscar${qs({ q })}`);
 export const impresiones = (nombre) => pedir(`/vendedor/scryfall/impresiones${qs({ nombre })}`);
 
 export const pedidos = (filtros = {}) => pedir(`/vendedor/pedidos${qs(filtros)}`);

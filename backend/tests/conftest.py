@@ -48,6 +48,7 @@ def _reiniciar():
     base.guardar_config("dolar", {"modo": "manual", "casa": "blue", "valor": 1000.0, "actualizado": base.ahora_iso()})
     cartas._cache.clear()
     cartas._nombres.clear()
+    cartas._acabados.clear()
     cartas._pool_standard.update(total=None, cuando=0.0)
     inventario._ultimo_intento["cuando"] = 0.0
     inventario._ultimo_refresco["cuando"] = 0.0

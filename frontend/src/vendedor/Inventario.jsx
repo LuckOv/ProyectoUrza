@@ -186,7 +186,7 @@ function OtroGrado({ carta, todas, grados, dolar, onCerrar, onGuardado }) {
           <small className="ayuda">
             {precioNum != null
               ? `Se vende a ${pesos(Math.round(precioNum * dolar))} antes de descuentos.`
-              : "Sin precio el chat no la puede vender."}
+              : "Sin precio: se vende igual y el precio se confirma en el local."}
           </small>
           {error && <p className="error-texto">{error}</p>}
         </div>

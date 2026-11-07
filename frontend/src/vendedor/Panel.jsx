@@ -75,7 +75,10 @@ export default function Panel() {
     const mirar = () => api.propuestas({ estado: "nueva" }).then((r) => setNuevas(r.nuevas)).catch(() => {});
     mirar();
     const t = setInterval(mirar, 60000);
-    return () => clearInterval(t);
+    // La pestaña Propuestas avisa cada vez que cambia algo, así el número baja al instante.
+    const alCambiar = (e) => setNuevas(e.detail);
+    window.addEventListener("urza:propuestas-nuevas", alCambiar);
+    return () => { clearInterval(t); window.removeEventListener("urza:propuestas-nuevas", alCambiar); };
   }, [adentro, pestana]);
 
   useEffect(() => {

@@ -5,8 +5,12 @@ import { dolares, pesos } from "../compartido/formato.js";
 /* Imagen de carta que se inclina siguiendo el puntero y se levanta al pasarle
    por encima. El efecto es una rotación en dos ejes proporcional a qué tan
    lejos del centro está el mouse, más un brillo que se desplaza como el de una
-   carta foil. La usan la carta del chat y sus variantes. */
-export function CartaInclinable({ imagen, nombre, ancho }) {
+   carta foil. La usan la carta del chat y sus variantes.
+   acabado ("normal" | "foil" | "etched", lo dice Scryfall): las foil suman un
+   reflejo tornasolado que se mueve con el puntero, y las etched uno metálico. */
+const NOMBRE_ACABADO = { foil: "Foil", etched: "Etched" };
+
+export function CartaInclinable({ imagen, nombre, ancho, acabado = "normal" }) {
   const marcoRef = useRef(null);
   const [giro, setGiro] = useState({ x: 0, y: 0 });
   const [luz, setLuz] = useState({ x: 50, y: 50 });
@@ -31,8 +35,8 @@ export function CartaInclinable({ imagen, nombre, ancho }) {
   return (
     <div
       ref={marcoRef}
-      className={`carta3d-marco${encima ? " encima" : ""}`}
-      style={ancho ? { width: ancho } : undefined}
+      className={`carta3d-marco${encima ? " encima" : ""}${NOMBRE_ACABADO[acabado] ? ` acabado-${acabado}` : ""}`}
+      style={{ ...(ancho ? { width: ancho } : {}), "--lx": `${luz.x}%`, "--ly": `${luz.y}%` }}
       onMouseEnter={() => setEncima(true)}
       onMouseMove={mover}
       onMouseLeave={salir}
@@ -46,6 +50,7 @@ export function CartaInclinable({ imagen, nombre, ancho }) {
         ) : (
           <div className="carta3d-sinimagen">{nombre}</div>
         )}
+        {NOMBRE_ACABADO[acabado] && <div className="carta3d-holo" aria-hidden="true" />}
         <div
           className="carta3d-brillo"
           style={{ background: `radial-gradient(circle at ${luz.x}% ${luz.y}%, rgba(255,255,255,.45), rgba(255,255,255,0) 55%)` }}
@@ -61,6 +66,19 @@ function BotonAgregar({ onClick, hay, agregando }) {
       {agregando ? "Agregando…" : hay ? "Agregar al carrito" : "Sin stock"}
     </button>
   );
+}
+
+/* Precio de una variante. Si el vendedor no le cargó precio, se avisa, pero
+   la carta se puede comprar igual: el precio se confirma en el local. */
+function Precio({ valor }) {
+  if (valor == null) {
+    return (
+      <span className="carta3d-sinprecio" title="Esta carta todavía no tiene precio cargado">
+        Sin precio · se confirma en el local
+      </span>
+    );
+  }
+  return <strong className="carta3d-precio">{pesos(valor)}</strong>;
 }
 
 /* La carta de la que habló Urza. Si la tienda la tiene en varias versiones
@@ -80,15 +98,17 @@ export default function Carta3D({ carta, onAgregar, agregando }) {
             const hay = v.cantidad > 0;
             return (
               <div key={v.id} className={`carta3d-variante${hay ? "" : " agotada"}`}>
-                <CartaInclinable imagen={v.imagen || carta.imagen} nombre={carta.nombre} />
-                <span className={`carta3d-grado${v.grado === "Sin graduar" ? "" : " psa"}`}>{v.grado}</span>
-                <strong className="carta3d-precio">{pesos(v.precio_ars)}</strong>
+                <CartaInclinable imagen={v.imagen || carta.imagen} nombre={carta.nombre} acabado={v.acabado} />
+                <span className={`carta3d-grado${v.grado === "Sin graduar" ? "" : " psa"}`}>
+                  {v.grado}{NOMBRE_ACABADO[v.acabado] ? ` · ${NOMBRE_ACABADO[v.acabado]}` : ""}
+                </span>
+                <Precio valor={v.precio_ars} />
                 {v.descuento > 0 && <span className="carta3d-desc">−{v.descuento}%</span>}
                 <span className="carta3d-stock">
                   {hay ? `${v.cantidad} en stock` : "Sin stock"}{v.set_nombre ? ` · ${v.set_nombre}` : ""}
                 </span>
                 <BotonAgregar
-                  hay={hay && v.precio_ars != null}
+                  hay={hay}
                   agregando={agregando}
                   onClick={() => onAgregar(carta, v)}
                 />
@@ -102,9 +122,10 @@ export default function Carta3D({ carta, onAgregar, agregando }) {
 
   // Una sola versión (o la tienda no la tiene).
   const v = variantes[0] || null;
+  const acabado = v ? v.acabado : carta.acabado;
   const hay = Boolean(v && v.cantidad > 0);
   let stock;
-  if (v) stock = hay ? `${v.cantidad} en stock · ${pesos(v.precio_ars)}` : "Sin stock";
+  if (v) stock = hay ? `${v.cantidad} en stock` : "Sin stock";
   else stock = "No está en la tienda";
   const referencia = !v && carta.precio_mercado_usd
     ? `Mercado: ${dolares(Number(carta.precio_mercado_usd))}`
@@ -112,17 +133,22 @@ export default function Carta3D({ carta, onAgregar, agregando }) {
 
   return (
     <div className="carta3d">
-      <CartaInclinable imagen={v?.imagen || carta.imagen} nombre={carta.nombre} />
+      <CartaInclinable imagen={v?.imagen || carta.imagen} nombre={carta.nombre} acabado={acabado} />
       <div className="carta3d-datos">
         <p className="carta3d-nombre">{carta.nombre}</p>
-        <p className="carta3d-edicion">{v ? `${v.set_nombre || ""} · ${v.grado}` : carta.edicion}</p>
+        <p className="carta3d-edicion">
+          {v ? `${v.set_nombre || ""} · ${v.grado}` : carta.edicion}
+          {NOMBRE_ACABADO[acabado] && ` · ${NOMBRE_ACABADO[acabado]}`}
+        </p>
         <p className="carta3d-stock">
           {stock}
+          {hay && v.precio_ars != null && ` · ${pesos(v.precio_ars)}`}
           {v?.descuento > 0 && ` (−${v.descuento}%)`}
           {referencia && ` · ${referencia}`}
         </p>
+        {hay && v.precio_ars == null && <Precio valor={null} />}
         {v && (
-          <BotonAgregar hay={hay && v.precio_ars != null} agregando={agregando} onClick={() => onAgregar(carta, v)} />
+          <BotonAgregar hay={hay} agregando={agregando} onClick={() => onAgregar(carta, v)} />
         )}
       </div>
     </div>

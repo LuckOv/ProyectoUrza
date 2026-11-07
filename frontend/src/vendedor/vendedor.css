@@ -34,8 +34,12 @@
   --rojo: #8c2216;
   --verde: #2f6b35;
   --titulo: "Goudy Mediaeval", Georgia, serif;
-  --flecha: url("/cursor-urza.png") 2 2, auto;
-  --flecha-hd: image-set(url("/cursor-urza.png") 1x, url("/cursor-urza@2x.png") 2x) 2 2, auto;
+  --flecha: url("/cursor-urza.png") 1 1, auto;
+  --flecha-hd: image-set(url("/cursor-urza.png") 1x, url("/cursor-urza@2x.png") 2x) 1 1, auto;
+  --clic: url("/cursor-click.png") 12 1, pointer;
+  --clic-hd: image-set(url("/cursor-click.png") 1x, url("/cursor-click@2x.png") 2x) 12 1, pointer;
+  --texto: url("/cursor-texto.png") 16 16, text;
+  --texto-hd: image-set(url("/cursor-texto.png") 1x, url("/cursor-texto@2x.png") 2x) 16 16, text;
   --sombra: 0 10px 28px rgba(12, 6, 2, 0.38);
 }
 
@@ -52,7 +56,18 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-button, select, input[type="checkbox"], a, label.interruptor { cursor: var(--flecha); cursor: var(--flecha-hd); }
+/* Cursores del mismo estilo que la flecha azul: mano para lo que se clickea
+   y barra para escribir. */
+button:not(:disabled), a[href], select, summary, input[type="checkbox"], input[type="radio"] {
+  cursor: var(--clic);
+  cursor: var(--clic-hd);
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(:disabled), textarea:not(:disabled) {
+  cursor: var(--texto);
+  cursor: var(--texto-hd);
+}
+
+button, select, input[type="checkbox"], a, label.interruptor { cursor: var(--clic); cursor: var(--clic-hd); }
 button:disabled { cursor: not-allowed; }
 
 /* --- marco -------------------------------------------------------------- */
@@ -436,8 +451,8 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
   box-shadow: var(--sombra);
   transition: transform 0.18s ease-out, border-color 0.18s;
   user-select: none;
-  cursor: var(--flecha);
-  cursor: var(--flecha-hd);
+  cursor: var(--clic);
+  cursor: var(--clic-hd);
 }
 .ficha:hover { transform: translateY(-3px); border-color: var(--borde-fuerte); }
 .ficha.elegida { border-color: var(--rivet); box-shadow: 0 0 0 3px rgba(217, 114, 46, 0.35), var(--sombra); }
@@ -548,8 +563,7 @@ input[type="checkbox"] { accent-color: var(--rivet); width: 16px; height: 16px; 
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
   gap: 10px;
-  max-height: 330px;
-  overflow-y: auto;
+  /* Sin scroll propio: se desplaza la ventana entera (un solo scroll). */
 }
 .impresion {
   width: 100%;
@@ -1169,3 +1183,16 @@ a.boton { text-decoration: none; }
   background: #23170f; color: #e9dcc0; font: 0.78rem/1.45 ui-monospace, Consolas, monospace;
   white-space: pre-wrap; word-break: break-word;
 }
+
+/* Impresiones que salieron sólo en foil / etched (en la tienda brillan). */
+.impresion-acabado {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #2a1206;
+  background: linear-gradient(110deg, #f6b3d8, #f9e27a, #9df3c4, #9cc8ff, #d4a8ff);
+}
+.impresion-acabado.etched { background: linear-gradient(110deg, #e9e2d0, #c9b07a, #f4efe2); }

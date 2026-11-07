@@ -182,6 +182,43 @@ def ficha(nombre: str):
     return resultado
 
 
+# --- acabado (foil) ------------------------------------------------------------
+# Scryfall dice en qué acabados salió cada impresión ("finishes": nonfoil, foil,
+# etched, glossy). La tienda no registra si su copia es foil, así que la carta
+# se muestra foil sólo cuando esa impresión existe ÚNICAMENTE en foil.
+_acabados: dict = {}   # scryfall_id -> "normal" | "foil" | "etched"
+
+
+def acabado_de(datos: dict) -> str:
+    acabados = datos.get("finishes") or []
+    if not acabados or "nonfoil" in acabados:
+        return "normal"
+    if "etched" in acabados:
+        return "etched"
+    if "foil" in acabados:
+        return "foil"
+    return "normal"            # sólo "glossy": no es foil
+
+
+def acabados_de(scryfall_ids: list) -> dict:
+    """Acabado de varias impresiones (con caché; de a 75 por pedido a Scryfall)."""
+    faltan = [i for i in dict.fromkeys(scryfall_ids) if i and i not in _acabados]
+    for desde in range(0, len(faltan), 75):
+        tanda = faltan[desde:desde + 75]
+        try:
+            r = requests.post(
+                "https://api.scryfall.com/cards/collection",
+                json={"identifiers": [{"id": i} for i in tanda]},
+                headers=HEADERS, timeout=10,
+            )
+            datos = r.json() if r.status_code == 200 else {}
+        except (requests.RequestException, ValueError):
+            datos = {}                 # sin red: se reintenta la próxima vez
+        for c in datos.get("data", []):
+            _acabados[c.get("id")] = acabado_de(c)
+    return {i: _acabados.get(i, "normal") for i in scryfall_ids if i}
+
+
 def buscar(nombre: str):
     """Datos de una carta para dibujarla en el chat, o None si Scryfall no la conoce.
 
@@ -211,10 +248,14 @@ def buscar(nombre: str):
             "tipo": datos.get("type_line"),
             "texto": datos.get("oracle_text"),
             "scryfall": datos.get("scryfall_uri"),
+            "acabado": acabado_de(datos),
         }
         _cache[clave] = base
 
     variantes = inventario.variantes_de(base["nombre"])
+    acabados = acabados_de([v.get("scryfall_id") for v in variantes])
+    for v in variantes:
+        v["acabado"] = acabados.get(v.get("scryfall_id"), "normal")
     con_stock = [v for v in variantes if v["cantidad"] > 0]
     primera = (con_stock or variantes or [None])[0]
 
@@ -286,6 +327,7 @@ def _impresion(datos: dict) -> dict:
         "fecha": datos.get("released_at"),
         "legal_standard": (datos.get("legalities") or {}).get("standard") == "legal",
         "colores": colores_de(datos),
+        "acabado": acabado_de(datos),
     }
 
 
@@ -313,6 +355,30 @@ def autocompletar(texto: str) -> list:
         if c.get("name") not in vistos:
             vistos.append(c.get("name"))
     return vistos
+
+
+def cartas_con_nombre(texto: str) -> list:
+    """Todas las cartas cuyo nombre contiene lo escrito ("colossus" → Colossus
+    Hammer, Colossus of Akros...), una por carta, ordenadas por nombre.
+
+    Es lo que usa "Agregar carta" cuando se aprieta Enter sin elegir de la
+    lista. Si no hay ninguna (porque está en español o mal escrita), se
+    resuelve como en el chat y se devuelve esa sola carta.
+    """
+    texto = (texto or "").strip()
+    if len(texto) < 2:
+        return []
+    consulta = urllib.parse.quote(f'name:"{texto.replace(chr(34), "")}"')
+    datos = _pedir(f"https://api.scryfall.com/cards/search?q={consulta}&unique=cards&order=name")
+    resultado = [
+        {"nombre": c.get("name"), "imagen": _imagen(c, "small"), "tipo": c.get("type_line")}
+        for c in (datos or {}).get("data", [])
+    ]
+    if not resultado:
+        oficial = resolver_nombre(texto)
+        if oficial:
+            resultado = [{"nombre": oficial, "imagen": None, "tipo": None}]
+    return resultado
 
 
 def impresiones(nombre: str) -> list:

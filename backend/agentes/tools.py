@@ -23,7 +23,7 @@ HEADERS = {
 def _pesos(valor) -> str:
     """12345.6 → '$12.346' (formato argentino, sin centavos)."""
     if valor is None:
-        return "sin precio"
+        return "sin precio (se confirma en el local)"
     return "$" + f"{round(valor):,}".replace(",", ".")
 
 
@@ -263,7 +263,10 @@ def _resumen_carrito(items: list) -> str:
         f"- {i['cantidad']} x {i['nombre']} ({i['edicion'] or 's/set'}, {i['grado']}) a {_pesos(i['precio'])} c/u"
         for i in items
     ]
-    return "Carrito actual:\n" + "\n".join(lineas) + f"\nTotal: {_pesos(tienda.total_de(items))}"
+    total = f"\nTotal: {_pesos(tienda.total_de(items))}"
+    if any(i["precio"] is None for i in items):
+        total += " + las cartas sin precio, que se confirman en el local"
+    return "Carrito actual:\n" + "\n".join(lineas) + total
 
 
 @tool
@@ -356,6 +359,8 @@ def confirmar_compra(nombre: str, apellido: str, fecha_retiro: str, hora_retiro:
         f"Pedido #{pedido['id']} confirmado a nombre de {pedido['nombre']} {pedido['apellido']}.\n"
         f"Retira: {dia} {d[8:10]}/{d[5:7]} a las {pedido['hora_retiro']} hs.\n"
         f"{detalle}\nTotal: {_pesos(pedido['total'])}"
+        + (" + las cartas sin precio, que se confirman en el local"
+           if any(i.get("precio") is None for i in pedido["items"]) else "")
     )
 
 

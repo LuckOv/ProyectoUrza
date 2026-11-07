@@ -136,12 +136,21 @@ def test_propuesta_si_falla_el_alta_no_queda_marcada(cliente):
 
 
 def test_pedido_manual_con_carta_sin_precio(cliente):
+    """Sin precio se vende igual: el total no la suma y el stock baja."""
     sp = alta(cliente, "Sin Precio", cantidad=3)
+    otra = alta(cliente, "Get Lost", cantidad=2, precio=3)
     r = cliente.post("/vendedor/pedidos", headers=CLAVE, json={
         "nombre": "A", "apellido": "B", "fecha_retiro": proximo("mar"), "hora_retiro": "12:00",
-        "items": [{"inventario_id": sp["id"], "cantidad": 1}]})
-    assert r.status_code == 409 and "precio" in r.json()["detail"]
-    assert cliente.get("/vendedor/inventario", headers=CLAVE).json()["items"][0]["cantidad"] == 3
+        "items": [{"inventario_id": sp["id"], "cantidad": 1}, {"inventario_id": otra["id"], "cantidad": 1}]})
+    assert r.status_code == 200, r.text
+    pedido = r.json()
+    assert pedido["total"] == 3000                     # sólo la que tiene precio (dólar de prueba: 1000)
+    assert any(i["precio"] is None for i in pedido["items"])
+    stock = {i["id"]: i["cantidad"] for i in cliente.get("/vendedor/inventario", headers=CLAVE).json()["items"]}
+    assert stock[sp["id"]] == 2
+    # el dashboard y el historial no se rompen con un precio vacío
+    assert cliente.get("/vendedor/dashboard", headers=CLAVE).status_code == 200
+    assert cliente.get("/vendedor/historial.csv", headers=CLAVE).status_code == 200
 
 
 def test_csv_viejo_guardado_desde_excel(cliente):
@@ -169,3 +178,29 @@ def test_claves_malas_no_bloquean(cliente):
     for _ in range(20):
         assert cliente.get("/vendedor/inventario", headers={"X-Vendedor-Clave": "vieja"}).status_code == 401
     assert cliente.post("/vendedor/entrar", json={"clave": "clave-test"}).status_code == 200
+
+
+def test_impresiones_con_nombre_escrito_a_mano(cliente):
+    """En 'Agregar carta' se puede escribir el nombre y apretar Enter sin elegir de la lista."""
+    exacto = cliente.get("/vendedor/scryfall/impresiones", headers=CLAVE, params={"nombre": "Blind Seer"}).json()
+    assert exacto["nombre"] == "Blind Seer" and len(exacto["impresiones"]) == 3
+    # en español / incompleto: se resuelve al nombre oficial
+    es = cliente.get("/vendedor/scryfall/impresiones", headers=CLAVE, params={"nombre": "elfos de llanowar"}).json()
+    assert es["nombre"] == "Llanowar Elves" and es["impresiones"]
+    parcial = cliente.get("/vendedor/scryfall/impresiones", headers=CLAVE, params={"nombre": "heartfire"}).json()
+    assert parcial["nombre"] == "Heartfire Hero"
+    r = cliente.get("/vendedor/scryfall/impresiones", headers=CLAVE, params={"nombre": "zzzz nada"})
+    assert r.status_code == 404 and "zzzz nada" in r.json()["detail"]
+
+
+def test_buscar_todas_las_cartas_con_un_nombre(cliente):
+    """Enter con 'Llanowar' (o parte de un nombre) muestra todas las cartas que lo contienen."""
+    r = cliente.get("/vendedor/scryfall/buscar", headers=CLAVE, params={"q": "er"}).json()["cartas"]
+    nombres = [c["nombre"] for c in r]
+    assert "Blind Seer" in nombres and "Cavern of Souls" in nombres and len(nombres) > 3
+    una = cliente.get("/vendedor/scryfall/buscar", headers=CLAVE, params={"q": "llanowar"}).json()["cartas"]
+    assert [c["nombre"] for c in una] == ["Llanowar Elves"]
+    # en español no hay coincidencia por nombre: se resuelve a la carta oficial
+    es = cliente.get("/vendedor/scryfall/buscar", headers=CLAVE, params={"q": "elfos de llanowar"}).json()["cartas"]
+    assert [c["nombre"] for c in es] == ["Llanowar Elves"]
+    assert cliente.get("/vendedor/scryfall/buscar", headers=CLAVE, params={"q": "zzzz"}).json()["cartas"] == []

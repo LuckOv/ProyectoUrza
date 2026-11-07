@@ -517,12 +517,12 @@ def agregar_variante(item_id: int, grado: str, cantidad: int = 1,
 
 
 def catalogo() -> list:
-    """Lo que el jugador puede comprar: todas las variantes con stock y precio."""
+    """Lo que el jugador puede comprar: todas las variantes con stock (con o sin precio cargado)."""
     return [
         {k: i.get(k) for k in ("id", "nombre", "set_nombre", "set_codigo", "rareza", "grado", "precio_ars",
                                "cantidad", "imagen", "descuento", "colores")}
         for i in listar()
-        if i["cantidad"] > 0 and i["precio_ars"] is not None
+        if i["cantidad"] > 0
     ]
 
 
