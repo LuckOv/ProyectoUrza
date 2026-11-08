@@ -282,7 +282,13 @@ def confirmar_pedido(thread_id: str, nombre: str, apellido: str, fecha_retiro: s
             raise ValueError("El carrito está vacío: no hay nada para confirmar.")
         pedido_id = _crear_pedido(con, lineas, nombre, apellido, fecha, hora, "chat", thread_id)
         con.execute("DELETE FROM carrito WHERE thread_id = ?", (thread_id,))
-    return obtener_pedido(pedido_id)
+    pedido = obtener_pedido(pedido_id)
+    try:
+        from tienda import telegram_notif
+        telegram_notif.notificar_pedido(pedido)
+    except Exception:
+        pass
+    return pedido
 
 
 def crear_pedido_manual(nombre: str, apellido: str, fecha_retiro: str, hora_retiro: str,

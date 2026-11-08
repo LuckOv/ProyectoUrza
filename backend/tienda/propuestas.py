@@ -174,7 +174,13 @@ def crear(thread_id: str | None, nombre: str, apellido: str, email: str, scryfal
             + f"{float(precio):,.0f}".replace(",", ".") + " c/u",
             con=con,
         )
-    return obtener(pid)
+    prop = obtener(pid)
+    try:
+        from tienda import telegram_notif
+        telegram_notif.notificar_propuesta(prop)
+    except Exception:
+        pass
+    return prop
 
 
 def obtener(pid: int):

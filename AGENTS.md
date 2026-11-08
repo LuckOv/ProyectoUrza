@@ -112,6 +112,9 @@ backend/
 | `agentes/tools.py` | Herramientas del agente: `consultar_precio_cardmarket`, `consultar_stock_local`, `consultar_datos_carta`, `consultar_reglas_mtg`, `consultar_lore_mtg`, `listar_cartas_disponibles` (catálogo), `sugerir_cartas_mazo` (armado de mazos, devuelve las cartas como *artifact* para el abanico), `iniciar_propuesta` (abre el formulario de propuesta en el chat, precargado con lo que dijo el cliente) y las de compra `agregar_al_carrito` (con `variante_id` opcional si hay varias), `ver_carrito`, `quitar_del_carrito`, `confirmar_compra(nombre, apellido, fecha_retiro, hora_retiro)` (reciben el `thread_id` por `RunnableConfig`, invisible para el modelo). |
 | `tienda/cartas.py` | Todo lo de Scryfall: `ficha`, `buscar` (carta 3D + variantes de la tienda), `resolver_nombre` (normaliza nombres ES/mal escritos, con caché), `autocompletar`, `impresiones`, `impresion_por_id`, `total_pool_standard`, `colores_de` (identidad de color WUBRG), `precios_actuales` (precio de mercado en lote vía `POST /cards/collection`, 75 por pedido). |
 | `tienda/tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
+| `tienda/telegram_notif.py` | Notificaciones automáticas de pedidos y propuestas de venta al dueño vía Telegram, descarga de fotos y mensajería saliente. |
+| `tienda/admin_reportes.py` | Reportes ejecutivos para el dueño vía Telegram móvil (ventas, pedidos pendientes, alertas de stock y precio). |
+| `tienda/management/commands/run_telegram_bot.py` | Comando Django (`python manage.py run_telegram_bot`) para correr el bot de Telegram en Long Polling con soporte de texto, visión con Karn y modo dueño. |
 | `agentes/reglas.py` | **Ajani**, subagente juez (imports de torch/Chroma lazy; si faltan, `motivo_no_disponible` lo explica): traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
 | `agentes/lore.py` | **Teferi**, subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
 | `agentes/saheeli.py` | **Saheeli**, subagente constructora de mazos con RAG propio (`mazos_db/`, colección `mazos_mtg`): recupera teoría de curvas y arquetipos, analiza el inventario real y asesora cortes, sinergias y cartas recomendadas en stock con su precio. |
@@ -201,10 +204,16 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 
 ### Pendientes (por prioridad)
 
-**FE-06 · Informar al vendedor** — **[Pendiente]**
-- *Como* vendedor, *quiero* que URZA me avise cuando un jugador deja una consulta o intención de compra, *para* estar al tanto sin mirar la base.
-- Base disponible: los pedidos confirmados ya aparecen en el panel (calendario, dashboard e historial). Falta el aviso activo (email/notificación).
-- Estado de diseño: definición de "aviso" (email/panel/webhook) y qué dispara (compra concreta, consulta de carta fuera de stock...). Quedó sin implementar desde el MVP inicial.
+**FE-06 · Informar al vendedor** — **[Implementado vía Telegram]**
+- *Como* vendedor, *quiero* que URZA me avise al instante cuando un jugador confirma un pedido o envía una propuesta de venta, *para* estar al tanto desde mi celular sin tener que mirar la base o Mesa Central.
+- Implementado: Notificaciones salientes en `tienda/telegram_notif.py` disparadas en `confirmar_pedido` y `propuestas.crear`. Envía mensaje formateado en Markdown al `TELEGRAM_OWNER_ID` con los datos del cliente, horario de retiro, total e items.
+
+**FE-18 · Bot de Telegram de URZA (Atención, Visión y Modo Dueño)** — **[Implementado]**
+- *Como* jugador o dueño de la tienda, *quiero* comunicarme con URZA desde Telegram (en grupos o privado), consultar cartas, armar mazos, mandar fotos para que Karn las examine y, como dueño, pedir reportes de ventas y alertas.
+- Comportamiento: comando Django `python manage.py run_telegram_bot` en modo Long Polling (ideal para ejecución local sin IP pública).
+  - Jugadores: chatean con el grafo completo de Urza (`tg_{chat_id}`), Ajani, Teferi y Saheeli.
+  - Visión con Karn: recepción de fotos para identificar cartas y stock, o fotos de mesa con dictamen de jugadas.
+  - Dueño (`TELEGRAM_OWNER_ID`): comandos ejecutivos `/ventas`, `/pedidos`, `/alertas`.
 
 **FE-08 · Alta de stock (solo vendedor)** — **[Implementado desde el panel]** · pendiente: hacerlo también por chat
 - *Como* vendedor, *quiero* agregar cartas al inventario, *para* mantener el stock al día.
