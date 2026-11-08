@@ -26,6 +26,8 @@ No hay cuentas de jugador: el carrito se ata a la conversación (`thread_id`) y 
 - LLM: **ChatGroq**, modelo `qwen/qwen3.8-27b`, `temperature=0`, `max_tokens=500` (tope del plan free de Groq; sin eso da 429).
 - RAG de reglas: **Chroma** (`backend/reglas_db/`), embeddings `paraphrase-multilingual-MiniLM-L12-v2`, rerank `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, juez = mismo ChatGroq.
 - RAG de lore: **Chroma** (`backend/lore_db/`, colección `lore_mtg`), mismos embeddings/rerank/ChatGroq reusados de `reglas.py`; corpus = intros de la **MTG Wiki** (`mtg.fandom.com`).
+- RAG de mazos: **Chroma** (`backend/mazos_db/`, colección `mazos_mtg`), mismos embeddings/rerank/ChatGroq reusados; corpus curado sobre curva de maná, bases de maná (Frank Karsten), arquetipos (Aggro/Midrange/Control/Combo/Tribal/Commander) y metodología de upgrades y cortes (`corpus_mazos.py`).
+- Visión por computadora: **Karn** (`backend/agentes/karn.py`), con Google Gemini 2.5 Flash (`google-genai`), para identificación de cartas + stock y análisis de mesa de juego + dictamen de jugadas junto a Ajani.
 - Frontend: **React 19 + Vite 8**.
 - Datos: SQLite `backend/urza.db` mapeada con modelos Django ORM (`tienda.models`) e índices nativos, API de **Scryfall** (fichas, imágenes, impresiones), **dolarapi.com** (cotización). `backend/inventario.csv` sólo se usa para la importación inicial.
 
@@ -61,6 +63,12 @@ uv run python -m ingesta.ingestar_lore --solo-bajar   # red → snapshot en back
 uv run python -m ingesta.ingestar_lore --index        # offline → backend/lore_db/
 uv run python -m ingesta.ingestar_lore                # ambas fases en corrida
 uv run python -m ingesta.ingestar_lore --rebuild      # borra snapshot e índice y arranca de cero
+```
+
+**RAG de armado de mazos**: si `backend/mazos_db/` no existe, ingestar desde `backend/`:
+```powershell
+uv run python -m ingesta.ingestar_mazos            # genera corpus e indexa en mazos_db/
+uv run python -m ingesta.ingestar_mazos --rebuild  # re-indexa desde cero
 ```
 
 ### Bases del bot desde el panel
@@ -106,9 +114,11 @@ backend/
 | `tienda/tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
 | `agentes/reglas.py` | **Ajani**, subagente juez (imports de torch/Chroma lazy; si faltan, `motivo_no_disponible` lo explica): traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
 | `agentes/lore.py` | **Teferi**, subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
+| `agentes/saheeli.py` | **Saheeli**, subagente constructora de mazos con RAG propio (`mazos_db/`, colección `mazos_mtg`): recupera teoría de curvas y arquetipos, analiza el inventario real y asesora cortes, sinergias y cartas recomendadas en stock con su precio. |
 | `agentes/karn.py` | **Karn**, subagente de visión por computadora (Gemini 2.5 Flash): identifica cartas físicas desde fotos y analiza campos de batalla, conectando con Ajani para dictamen de jugadas. |
 | `ingesta/ingestar_reglas.py` | Descarga las Comprehensive Rules, las parte en chunks (1500 chars, overlap 200) con metadata `regla`/`titulo`/`seccion`, e indexa en Chroma. |
 | `ingesta/ingestar_lore.py` | ETL del lore **resumible**: baja la MTG Wiki (Fandom) con checkpoint en `backend/lore/` (`paginas.jsonl` append-only + `estado.json` + `ronda.json` con manifiesto por ronda), escaneando categorías raíz (BFS) y una lista curada de títulos; `--index` reconstruye `lore_db/` offline. |
+| `ingesta/ingestar_mazos.py` | Ingesta de teoría y arquetipos de mazos (`corpus_mazos.py`) a Chroma `mazos_db/`. Soporta flag `--rebuild`. |
 | `scripts/test_local.py` | Chat por consola para probar al agente sin front: `..\.venv\Scripts\python -m scripts.test_local`. |
 
 ### Frontend (`frontend/src/`)
@@ -210,11 +220,10 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Historial ("Protocolo"): fecha y hora de retiro, fecha y hora de pedido, nombre, unidades, detalle, comentario del vendedor (editable en la fila); filtros por texto, estado y rango de fechas; export CSV (`;`, UTF-8 con BOM para Excel).
 - Configuración: horarios por día (los usa el chat para validar retiros), dólar automático (dolarapi: blue/oficial/tarjeta/MEP/…) o manual, umbral de stock bajo y panel de descuentos (general + por carta; se aplica el mayor).
 
-**FE-09 · Armador de mazos** — **[Implementado como herramienta]** (sin subagente: `sugerir_cartas_mazo` en `tools.py`)
-- *Como* jugador, *quiero* recomendaciones para construir un mazo, *para* armar mi lista.
-- Comportamiento: combina recomendaciones de **Scryfall** (búsqueda por color/tipo/sinergia) con **stock local** (`consultar_stock_local`) para priorizar lo que la tienda tiene.
-- Aceptación: pedido de un arquetipo (ej. "mazo de Cabaleros de X color") → devuelve cartas candidatas indicando cuáles hay en la tienda.
-- Implementado: la herramienta arma la búsqueda de Scryfall (`cartas.consulta_mazo`: colores en español o letras → `id<=`, formato → `f:`, tipo → `t:`, palabras clave en inglés → `t:/o:`), ordena por popularidad (EDHREC) y pone primero las que hay en stock. El chat las muestra en un **abanico** (`Abanico.jsx`): al pasar el cursor sube la carta y muestra sólo el nombre.
+**FE-09 · Saheeli: Asesora de mazos con RAG** — **[Implementado]**
+- *Como* jugador, *quiero* recomendaciones fundamentadas para construir o mejorar mi mazo, y saber qué cartas de las recomendadas están en stock en la tienda, *para* optimizar mi lista y comprar lo que me falta.
+- Comportamiento: Saheeli (`saheeli.py`) corre un pipeline RAG sobre `backend/mazos_db/` (colección `mazos_mtg`, embedding multilingüe + reranker cruzado + ChatGroq). Cruza los arquetipos, la teoría de curva de maná y bases de maná (Frank Karsten) con el inventario real de la tienda (`consultar_stock_local`). Retorna recomendaciones de estrategia/cortes y una lista de cartas sugeridas priorizando el stock local con su precio en pesos.
+- Aceptación: consulta de mejora o armado de mazo (ej. "tengo un mazo de elfos verde, ¿qué le agrego?") → respuesta táctica fundamentada citando cartas disponibles en stock con precio, y mostrando las sugerencias visuales en el abanico 3D (`Abanico.jsx`).
 
 **FE-12 · Catálogo y variantes en el chat** — **[Implementado]**
 - "¿Qué cartas tenés?" → `listar_cartas_disponibles` → el agente responde "Las cartas disponibles son…" y aparece el botón **Ver todas las cartas** (`Catalogo.jsx`: lista simple con buscador, de `GET /catalogo`).
@@ -230,7 +239,7 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Se ve al final de **Configuración → Registro de actividad** (`RegistroActividad.jsx`, `GET /vendedor/actividad?q=&tipo=&antes_de=`), con buscador, filtro por grupo y "Cargar más". Ya no está en el Dashboard.
 
 **FE-15 · Equipo de agentes con nombre** — **[Implementado]**
-- Urza orquesta; Tibalt vende, Ajani hace de juez, Teferi cuenta el lore y Saheeli arma mazos. El chat muestra debajo de cada respuesta a quién consultó Urza.
+- Urza orquesta; Tibalt vende, Ajani hace de juez, Teferi cuenta el lore, Saheeli asesora mazos con RAG y Karn analiza imágenes. El chat muestra debajo de cada respuesta a quién consultó Urza.
 
 **FE-16 · Propuestas de venta de clientes** — **[Implementado]**
 - *Como* jugador, *quiero* ofrecerle una carta a la tienda ("tengo X en PSA 9 a $Y"), *para* vendérsela.
@@ -244,10 +253,10 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - Inventario → **Precios a revisar** arriba de todo, con dos avisos: (1) **tu precio lejos del mercado de hoy** (`vs_mercado_pct`; para graduadas el mercado se estima con Scryfall × multiplicador y el umbral es el doble), útil cuando cargás una carta carísima o regalada; (2) **el mercado se movió** desde que pusiste el precio. Botones "Poner US$ X" y **"Dejarlo así"** (`POST /vendedor/inventario/{id}/mantener-precio`, guarda `precio_aceptado_usd`: no se avisa más hasta que cambies ese precio).
 - Detalle del aviso (2): compara el precio de mercado de Scryfall de hoy (`precio_mercado_usd`, refresco cada 6 h o con "Actualizar precios de mercado") contra el que había cuando el vendedor puso su precio (`mercado_referencia_usd`) y sugiere ajustar en la misma proporción (botón "Poner US$ X"). Funciona igual para PSA.
 
-**FE-10 · Reconocimiento de fotos de cartas** — **[Pendiente · última prioridad]**
-- Doble uso según el rol autenticado, con objetivos distintos:
-  - *Como* **jugador**, quiero enviar o sacar una foto de una carta y que me diga si hay stock, *para* saber si puedo comprarla (solo consulta).
-  - *Como* **vendedor**, quiero enviar o sacar una foto de una carta y que la cargue al stock, *para* mantener el inventario al día (da de alta).
-- Comportamiento: la visión reconoce la carta en la imagen → se verifica con `resolver_nombre` (`cartas.py`) → según rol: consulta stock **o** alta de stock (misma regla de seguridad que FE-08; el jugador jamás escribe).
-- Aceptación: foto de carta → nombre oficial correcto; jugador → respuesta de stock sin escritura; vendedor → carta agregada y visible en `consultar_stock_local`.
-- Nota de diseño (abierta): modelo de visión/OCR para identificar la carta (ej. reconocer por el arte vía Scryfall, o modelo multimodal vía API).
+**FE-10 · Visión por computadora con Karn** — **[Implementado]**
+- *Como* jugador, *quiero* enviar o sacar una foto de una carta física para consultar stock y precio, o una foto del campo de batalla para recibir dictamen de jugadas con el Juez Ajani.
+- Comportamiento: Karn (`karn.py`) usa Google Gemini 2.5 Flash multimodal (`google-genai`).
+  - **Reconocimiento de carta física**: identifica nombre en inglés y set, y consulta `consultar_stock_local` de la tienda informando disponibilidad inmediata.
+  - **Análisis de mesa**: transcribe permanentes visibles, estados (giradas/enderezadas), maná disponible, y formula la consulta reglamentaria a Ajani (`consultar_reglas_mtg`) para dictaminar jugadas legales o recomendaciones estratégicas.
+  - Front: botón de cámara y selector de archivos en `App.jsx`, con miniatura en preview y burbuja visual en el chat.
+- Aceptación: foto de Llanowar Elves → informa variantes, precio y stock de la tienda; foto de mesa de juego → veredicto formal citando reglas oficiales de MTG.

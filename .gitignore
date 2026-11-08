@@ -16,3 +16,6 @@ backend/reglas_db/
 # Datos del RAG de lore: regenerables con ingestar_lore.py
 backend/lore/
 backend/lore_db/
+
+# Datos del RAG de mazos: regenerables con ingestar_mazos.py
+backend/mazos_db/

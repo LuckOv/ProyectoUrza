@@ -59,6 +59,7 @@ export default function BasesBot({ avisar }) {
   const t = d.trabajo;
   const reglasOk = Boolean(d.reglas.fragmentos);
   const loreOk = Boolean(d.lore.fragmentos);
+  const mazosOk = Boolean(d.mazos?.fragmentos);
   const faltan = d.dependencias_faltan.length > 0;
   const bloqueado = corriendo || faltan;
 
@@ -66,14 +67,14 @@ export default function BasesBot({ avisar }) {
     <section className="bloque">
       <div className="bloque-cabeza">
         <div>
-          <h3>Bases del bot (reglas y lore)</h3>
+          <h3>Bases del bot (reglas, lore y mazos)</h3>
           <p className="ayuda">
-            Ajani y Teferi responden buscando en estas bases.
+            Ajani, Teferi y Saheeli responden buscando en estas bases locales.
           </p>
         </div>
-        <button className="boton primario" disabled={bloqueado || (reglasOk && loreOk && d.modelos.rerank)}
-                onClick={() => instalar(["reglas", "modelos", "lore"])}>
-          {reglasOk && loreOk && d.modelos.rerank ? "Todo instalado" : "Instalar todo"}
+        <button className="boton primario" disabled={bloqueado || (reglasOk && loreOk && mazosOk && d.modelos.rerank)}
+                onClick={() => instalar(["reglas", "modelos", "mazos", "lore"])}>
+          {reglasOk && loreOk && mazosOk && d.modelos.rerank ? "Todo instalado" : "Instalar todo"}
         </button>
       </div>
 
@@ -91,6 +92,13 @@ export default function BasesBot({ avisar }) {
           detalle={reglasOk
             ? `${numero(d.reglas.fragmentos)} fragmentos de las Reglas Completas · ${fechaHora(d.reglas.actualizado)}`
             : "Baja las Reglas Completas oficiales y las indexa. Tarda unos minutos."}
+        />
+        <Fila
+          titulo="Mazos y Sinergias" quien="Saheeli, la armadora" instalado={mazosOk} ocupado={bloqueado} partes={["mazos"]}
+          onInstalar={instalar}
+          detalle={mazosOk
+            ? `${numero(d.mazos.fragmentos)} fragmentos de arquetipos, curvas y sinergias · ${fechaHora(d.mazos.actualizado)}`
+            : "Indexa las guías de arquetipos, cálculo de maná y sinergias para armado de mazos."}
         />
         <Fila
           titulo="Lore" quien="Teferi, el historiador" instalado={loreOk} ocupado={bloqueado} partes={["lore"]}

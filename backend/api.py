@@ -165,7 +165,7 @@ _grafo = None
 
 # Herramientas cuyo argumento nombre_carta NO debe disparar la carta 3D:
 # si el jugador saca una carta del carrito, no tiene sentido volver a mostrarla.
-_SIN_CARTA = {"quitar_del_carrito"}
+_SIN_CARTA = {"quitar_del_carrito", "confirmar_compra"}
 
 # Si en el turno se usó alguna de éstas, el jugador no estaba vendiendo una
 # carta: el respaldo de la planilla de propuesta no tiene que pisar la respuesta.
@@ -259,6 +259,10 @@ def chat(consulta: Consulta):
             # llamó a la herramienta, así no hay que adivinarlo del texto.
             if nombre not in _SIN_CARTA and isinstance(args, dict) and args.get("nombre_carta"):
                 ultimo_nombre = args["nombre_carta"]
+            if nombre == "agregar_al_carrito" and resultado.startswith("Agregué "):
+                ultimo_nombre = None
+            if nombre == "confirmar_compra":
+                ultimo_nombre = None
             # Si en este turno se cerró la compra, el front muestra el comprobante.
             if nombre == "confirmar_compra" and resultado.startswith("Pedido #"):
                 pedido = resultado

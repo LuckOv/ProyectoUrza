@@ -12,6 +12,7 @@ from tienda import tienda
 from tienda.cartas import _plano, ficha, resolver_nombre
 from agentes.lore import consultar_lore_mtg
 from agentes.reglas import consultar_reglas_mtg
+from agentes import saheeli
 
 # Cabecera obligatoria que exige la API de Scryfall para no bloquear la petición
 HEADERS = {
@@ -162,53 +163,26 @@ def listar_cartas_disponibles() -> str:
 
 @tool(response_format="content_and_artifact")
 def sugerir_cartas_mazo(colores: str = "", formato: str = "standard", tipo: str = "",
-                        palabras_clave: str = "", cantidad: int = 12):
-    """Busca cartas candidatas para armar un mazo y marca cuáles hay en la tienda.
+                        palabras_clave: str = "", consulta_completa: str = "", mazo_actual: str = "",
+                        cantidad: int = 12):
+    """Asesora en la construcción, optimización y mejora de mazos de Magic usando el RAG de Saheeli.
 
-    Usar cuando el jugador pide ayuda para armar un mazo o pregunta qué cartas
-    usar. Parámetros (todos opcionales):
-    - colores: en español o en letras, ej. "rojo y verde", "azul negro", "RG".
-    - formato: standard, pioneer, modern, pauper, commander... (por defecto standard).
-    - tipo: criatura, instantáneo, conjuro, encantamiento, artefacto, tierra, planeswalker.
-    - palabras_clave: en INGLÉS, tribu o mecánica, ej. "elf", "flying", "token", "lifelink".
-    - cantidad: cuántas sugerir (máximo 20).
-    Prioriza las que la tienda tiene en stock. El chat muestra las sugeridas
-    como un abanico de cartas.
+    Usar cuando el jugador pide ayuda para armar un mazo, cómo mejorarlo, qué cartas
+    de la tienda le sirven, o sugerencias de sinergias. Parámetros:
+    - colores: ej. 'rojo y verde', 'RG', 'mono red', 'verde'.
+    - formato: standard, pioneer, modern, commander...
+    - tipo: criatura, hechizos, etc.
+    - palabras_clave: ej. 'elfos', 'prowess', 'sacrificio', 'control'.
+    - consulta_completa: lo que el jugador preguntó en su mensaje.
+    - mazo_actual: lista o nombres de cartas que ya tiene si busca mejorar un mazo.
+    Prioriza las cartas en stock en la tienda y muestra las recomendadas en un abanico visual.
     """
-    cantidad = max(4, min(int(cantidad or 12), 20))
-    consulta = cartas.consulta_mazo(colores, formato, tipo, palabras_clave)
-    candidatas = cartas.candidatas_mazo(consulta)
-    if not candidatas:
-        return (f"Scryfall no devolvió cartas para esa búsqueda ({consulta}). "
-                "Probá con otros colores, formato o palabras clave.", [])
-
-    # Stock de la tienda por nombre (todas las variantes juntas).
-    stock = {}
-    for i in inventario.catalogo():
-        clave = _plano(i["nombre"])
-        previo = stock.get(clave, {"cantidad": 0, "precio_ars": None})
-        precios = [p for p in (previo["precio_ars"], i["precio_ars"]) if p is not None]
-        stock[clave] = {"cantidad": previo["cantidad"] + i["cantidad"], "precio_ars": min(precios) if precios else None}
-
-    en_tienda = [c for c in candidatas if _plano(c["nombre"]) in stock]
-    resto = [c for c in candidatas if _plano(c["nombre"]) not in stock]
-    elegidas = (en_tienda + resto)[:cantidad]
-
-    lineas = []
-    for c in elegidas:
-        s = stock.get(_plano(c["nombre"]))
-        donde = (f"EN LA TIENDA: {s['cantidad']} u., desde {_pesos(s['precio_ars'])}"
-                 if s else "no está en la tienda")
-        lineas.append(f"- {c['nombre']} ({c['tipo']}) — {donde}")
-        c["en_stock"] = bool(s)
-
-    texto = (
-        f"Búsqueda en Scryfall: {consulta}. Candidatas ordenadas por popularidad, "
-        f"primero las que hay en la tienda ({len(en_tienda)} de {len(candidatas)} encontradas):\n"
-        + "\n".join(lineas)
-        + "\nEl jugador ya ve estas cartas en un abanico debajo de tu mensaje."
+    partes = [p for p in (colores, tipo, palabras_clave) if p]
+    detalle = " ".join(partes)
+    consulta = consulta_completa or (f"Mazo {detalle} en formato {formato}".strip() if detalle else f"Mazo para formato {formato}")
+    return saheeli.asesorar_mazo(
+        consulta, formato=formato, mazo_actual=mazo_actual, colores=colores, tipo=tipo, palabras_clave=palabras_clave
     )
-    return texto, elegidas
 
 
 # --- propuestas (el jugador le ofrece una carta a la tienda) ------------------------

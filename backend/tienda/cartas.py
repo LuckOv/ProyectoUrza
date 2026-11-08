@@ -274,12 +274,11 @@ def buscar(nombre: str):
 # --- para el panel del vendedor ---------------------------------------------
 
 def colores_de(datos: dict) -> str:
-    """Colores de una carta en letras WUBRG ("" = incolora), sumando las dos caras."""
+    """Colores de una carta en letras WUBRG ("" = incolora), sumando caras e identidad."""
     colores = set(datos.get("colors") or [])
     for cara in datos.get("card_faces") or []:
         colores |= set(cara.get("colors") or [])
-    if not colores and datos.get("colors") is None and not datos.get("card_faces"):
-        colores = set(datos.get("color_identity") or [])
+    colores |= set(datos.get("color_identity") or [])
     return "".join(c for c in "WUBRG" if c in colores)
 
 
@@ -421,12 +420,21 @@ def total_pool_standard():
 # --- armado de mazos -------------------------------------------------------------
 
 COLORES = {
+    # Nombres en español
     "blanco": "W", "blanca": "W", "blancos": "W", "blancas": "W", "w": "W",
     "azul": "U", "azules": "U", "u": "U",
     "negro": "B", "negra": "B", "negros": "B", "negras": "B", "b": "B",
     "rojo": "R", "roja": "R", "rojos": "R", "rojas": "R", "r": "R",
     "verde": "G", "verdes": "G", "g": "G",
-    "incoloro": "C", "incolora": "C", "c": "C",
+    "incoloro": "C", "incolora": "C", "incoloros": "C", "incoloras": "C", "c": "C",
+    # Nombres en inglés
+    "white": "W", "blue": "U", "black": "B", "red": "R", "green": "G", "colorless": "C",
+    # Gremios (Guilds - 2 colores)
+    "azorius": "WU", "dimir": "UB", "rakdos": "BR", "gruul": "RG", "selesnya": "GW",
+    "orzhov": "WB", "izzet": "UR", "golgari": "BG", "boros": "WR", "simic": "UG",
+    # Fragmentos y Clanes (Shards / Clans - 3 colores)
+    "esper": "WUB", "grixis": "UBR", "jund": "BRG", "naya": "WRG", "bant": "GWU",
+    "abzan": "WBG", "jeskai": "URW", "sultai": "UBG", "mardu": "WBR", "temur": "URG",
 }
 TIPOS = {
     "criatura": "creature", "criaturas": "creature",
@@ -440,16 +448,27 @@ TIPOS = {
 }
 FORMATOS = {"standard", "pioneer", "modern", "legacy", "vintage", "pauper", "commander", "historic", "brawl"}
 
+_CODIGOS_COLOR_VALIDOS = {
+    "W", "U", "B", "R", "G", "C",
+    "WU", "UB", "BR", "RG", "GW", "WB", "UR", "BG", "WR", "UG",
+    "WUB", "UBR", "BRG", "WRG", "GWU", "WBG", "URW", "UBG", "WBR", "URG",
+    "WUBRG",
+}
+
 
 def _letras_de_color(colores: str) -> str:
-    """'rojo y verde' / 'RG' / 'Gruul-ish' → 'RG'. Sólo reconoce lo que entiende."""
-    texto = _plano(colores or "")
+    """'rojo y verde' / 'RG' / 'gruul' / 'rojo-verde' → 'RG'."""
+    raw = (colores or "").replace("-", " ").replace("/", " ").replace(",", " ")
+    texto = _plano(raw)
+    texto = texto.replace("mono ", "")
     letras = []
-    for palabra in texto.replace(",", " ").replace("/", " ").split():
+    for palabra in texto.split():
         if palabra in COLORES:
-            letras.append(COLORES[palabra])
-        elif set(palabra) <= set("wubrgc") and len(palabra) <= 5:
-            letras += [c.upper() for c in palabra]
+            letras.extend(list(COLORES[palabra]))
+        elif palabra.upper() in _CODIGOS_COLOR_VALIDOS:
+            letras.extend(list(palabra.upper()))
+        elif set(palabra) <= set("wubrgc") and len(palabra) <= 4 and all(c in "wubrgc" for c in palabra):
+            letras.extend([c.upper() for c in palabra])
     return "".join(dict.fromkeys(letras))   # sin repetidos, en orden
 
 
@@ -485,5 +504,6 @@ def candidatas_mazo(consulta: str) -> list:
             "imagen": _imagen(c),
             "tipo": cara.get("type_line") or c.get("type_line") or "",
             "coste": cara.get("mana_cost") or c.get("mana_cost") or "",
+            "colores": colores_de(c),
         })
     return resultado

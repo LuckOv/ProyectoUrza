@@ -281,7 +281,7 @@ def vision_analizar_mesa(request, datos: ConsultaVision):
 # --- Chat con Urza (LangGraph + Rate Limiting + Visión) ---
 
 _grafo = None
-_SIN_CARTA = {"quitar_del_carrito"}
+_SIN_CARTA = {"quitar_del_carrito", "confirmar_compra"}
 _NO_ES_VENTA = {
     "consultar_reglas_mtg", "consultar_lore_mtg", "sugerir_cartas_mazo", "agregar_al_carrito",
     "ver_carrito", "quitar_del_carrito", "confirmar_compra", "listar_cartas_disponibles",
@@ -405,6 +405,10 @@ def chat(request, consulta: Consulta):
             herramientas.append({"nombre": nombre, "argumentos": args, "resultado": resultado})
             if nombre not in _SIN_CARTA and isinstance(args, dict) and args.get("nombre_carta"):
                 ultimo_nombre = args["nombre_carta"]
+            if nombre == "agregar_al_carrito" and resultado.startswith("Agregué "):
+                ultimo_nombre = None
+            if nombre == "confirmar_compra":
+                ultimo_nombre = None
             if nombre == "confirmar_compra" and resultado.startswith("Pedido #"):
                 pedido = resultado
             if nombre == "sugerir_cartas_mazo" and getattr(m, "artifact", None):

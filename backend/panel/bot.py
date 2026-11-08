@@ -29,11 +29,13 @@ BACKEND = Path(__file__).resolve().parent.parent
 REGLAS_DB = BACKEND / "reglas_db"
 LORE_DB = BACKEND / "lore_db"
 LORE_SNAP = BACKEND / "lore"
+MAZOS_DB = BACKEND / "mazos_db"
 
 PASOS = {
     "reglas": "Reglas (Ajani)",
     "modelos": "Modelo de búsqueda del juez",
     "lore": "Lore (Teferi)",
+    "mazos": "Mazos y Sinergias (Saheeli)",
 }
 DEPENDENCIAS = ["chromadb", "langchain_chroma", "langchain_huggingface", "sentence_transformers"]
 
@@ -104,6 +106,7 @@ def estado() -> dict:
         "reglas": {"fragmentos": _fragmentos(REGLAS_DB), "actualizado": _modificado(REGLAS_DB)},
         "lore": {"fragmentos": _fragmentos(LORE_DB), "actualizado": _modificado(LORE_DB),
                  "paginas": _paginas_lore(), "descarga_completa": _descarga_lore_completa()},
+        "mazos": {"fragmentos": _fragmentos(MAZOS_DB), "actualizado": _modificado(MAZOS_DB)},
         "modelos": {"rerank": _modelo_rerank_bajado()},
         "trabajo": trabajo,
         "pasos": PASOS,
@@ -117,6 +120,8 @@ def _comando(paso: str) -> list:
     if paso == "reglas":
         # Si ya existe, se rehace de cero: sin --rebuild la ingesta duplica todo.
         return [py, "-m", "ingesta.ingestar_reglas"] + (["--rebuild"] if REGLAS_DB.exists() else [])
+    if paso == "mazos":
+        return [py, "-m", "ingesta.ingestar_mazos", "--rebuild"]
     if paso == "lore":
         # Si la descarga ya está completa (por ejemplo, copiaste la carpeta lore/
         # de un compañero), sólo se indexa: es offline y mucho más rápido.
@@ -134,7 +139,7 @@ def _comando(paso: str) -> list:
 def _soltar_bases():
     """El servidor puede tener abiertas las bases (si ya se usaron): se sueltan
     para poder rehacerlas. En la próxima pregunta se vuelven a abrir solas."""
-    for nombre in ("agentes.reglas", "agentes.lore"):
+    for nombre in ("agentes.reglas", "agentes.lore", "agentes.saheeli"):
         modulo = sys.modules.get(nombre)
         if modulo is not None:
             modulo._vectorstore = None
