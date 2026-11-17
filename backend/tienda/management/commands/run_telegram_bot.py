@@ -78,6 +78,18 @@ def _bucle_polling(stdout=None, background=False):
     else:
         print(banner, flush=True)
 
+    # Registrar los comandos oficiales en el menú nativo de Telegram (botón [/] o menú emergente)
+    try:
+        comandos_menu = [
+            {"command": "comandos", "description": "Ver qué puede hacer Urza y cómo consultarle"},
+            {"command": "ayuda", "description": "Guía rápida de interacciones y ejemplos"},
+            {"command": "ping", "description": "Comprobar si el bot está activo en local"},
+            {"command": "estado", "description": "Ver estado del servidor y base de datos"},
+        ]
+        requests.post(telegram_notif.url_api("setMyCommands"), json={"commands": comandos_menu}, timeout=5)
+    except Exception as e:
+        logger.warning(f"No se pudieron registrar comandos de Telegram: {e}")
+
     # Enviar saludo inicial al dueño y al grupo para confirmar que está operativo
     try:
         telegram_notif.notificar_inicio(bot_username)
@@ -159,7 +171,7 @@ class Command(BaseCommand):
         if photos:
             if chat_type in ("group", "supergroup"):
                 mencion_oficial = f"@{bot_username.lower()}"
-                alias_comunes = ["@urza", "@urzabot", "@urzatiendabot"]
+                alias_comunes = ["@urza", "@urzabot", "@urzatiendabot", "@urzamtgbot"]
                 caption_lower = caption.lower()
                 es_reply_al_bot = msg.get("reply_to_message", {}).get("from", {}).get("is_bot")
                 fue_mencionado = (
@@ -193,7 +205,7 @@ class Command(BaseCommand):
         # En grupos, responder si mencionan al bot (@UrzaTiendaBot, urza, etc.), si le responden (reply) o si es un comando
         if chat_type in ("group", "supergroup"):
             mencion_oficial = f"@{bot_username.lower()}"
-            alias_comunes = ["@urza", "@urzabot", "@urzatiendabot"]
+            alias_comunes = ["@urza", "@urzabot", "@urzatiendabot", "@urzamtgbot"]
             es_reply_al_bot = msg.get("reply_to_message", {}).get("from", {}).get("is_bot")
             texto_lower = texto_raw.lower()
 
@@ -264,16 +276,29 @@ class Command(BaseCommand):
             telegram_notif.enviar_mensaje(chat_id, estado_msg)
             return
 
-        # Comandos básicos de bienvenida
-        if texto_raw in ("/start", "/help", "/ayuda"):
+        # Comandos básicos de bienvenida / ayuda / vacío
+        if not texto_raw or texto_raw.lower() in (
+            "/start", "/help", "/ayuda", "/comandos", "comandos", "ayuda", "help", "hola", "buenas", "buenas tardes", "buen dia"
+        ):
             bienvenida = (
-                f"🧙‍♂️ *¡Saludos, {user_name}! Soy Urza, el artífice supremo.*\n\n"
-                f"Estoy aquí para asistirte con la tienda de Magic:\n"
-                f"• *Stock y Precios:* Preguntame por cartas físicas y sus variantes.\n"
-                f"• *Reglas de Juego:* Consultale a Ajani sobre cualquier interacción o jugada.\n"
-                f"• *Lore e Historia:* Teferi te contará sobre los planos y personajes.\n"
-                f"• *Armado de Mazos:* Saheeli optimiza tus listas y curva de maná.\n"
-                f"• *Visión (Karn):* ¡Envíame una foto de una carta física para saber si hay stock, o de una mesa de juego para arbitrar una jugada!\n"
+                f"🧙‍♂️ *¡Saludos, {user_name}! Soy Urza, el artífice supremo de la tienda.*\n\n"
+                f"Podés hablarme naturalmente o pedirme lo que necesites en el grupo o por privado. Acá tenés mis principales habilidades:\n\n"
+                f"📦 *Stock y Precios de la tienda:*\n"
+                f"• _\"¿Tenés Cavern of Souls?\"_\n"
+                f"• _\"¿Cuánto sale un Llanowar Elves?\"_\n\n"
+                f"⚖️ *Reglas Oficiales (Juez Ajani):*\n"
+                f"• _\"¿Cómo funciona Deathtouch con Trample?\"_\n"
+                f"• _\"¿Puedo responder al trigger de una Fetchland?\"_\n\n"
+                f"📜 *Historia y Lore (Erudito Teferi):*\n"
+                f"• _\"¿Quién fue Yawgmoth?\"_\n"
+                f"• _\"Contame la caída de Phyrexia\"_\n\n"
+                f"🛠️ *Armado de Mazos (Artífice Saheeli):*\n"
+                f"• _\"Recomendame cartas rojas agresivas en stock\"_\n"
+                f"• _\"¿Qué le puedo cortar a mi mazo Commander?\"_\n\n"
+                f"👁️ *Visión y Análisis (Golem Karn):*\n"
+                f"• Mandame una *foto de una carta* para cotizarla y ver stock.\n"
+                f"• Mandame una *foto del campo de batalla* con tu duda para que Ajani y yo arbitremos la jugada.\n\n"
+                f"💡 *Tip:* En el grupo podés mencionarme como `@{bot_username}` o responder a cualquiera de mis mensajes."
             )
             telegram_notif.enviar_mensaje(chat_id, bienvenida)
             return
