@@ -28,6 +28,12 @@ logger = logging.getLogger("urza.telegram")
 _bot_corriendo = False
 _hilo_bot = None
 
+# Memoria de ventanas de conversación activas en grupos:
+# Guarda la marca de tiempo (time.time()) del último intercambio con un usuario en un grupo:
+# key: (chat_id, user_id) -> float (timestamp)
+_ultimas_interacciones_grupo: dict[tuple[int | str, str], float] = {}
+VENTANA_CONVERSACION_SEGUNDOS = 180  # 3 minutos de conversación fluida sin necesidad de mencionar
+
 
 def iniciar_bot_background():
     """Inicia el bot en un hilo secundario (usado por Django runserver)."""
@@ -173,16 +179,34 @@ class Command(BaseCommand):
                 mencion_oficial = f"@{bot_username.lower()}"
                 alias_comunes = ["@urza", "@urzabot", "@urzatiendabot", "@urzamtgbot"]
                 caption_lower = caption.lower()
-                es_reply_al_bot = msg.get("reply_to_message", {}).get("from", {}).get("is_bot")
+                reply_msg = msg.get("reply_to_message", {})
+                reply_from = reply_msg.get("from", {})
+                es_reply_al_bot = bool(
+                    reply_from.get("is_bot")
+                    and (
+                        reply_from.get("username", "").lower() == bot_username.lower()
+                        or "urza" in reply_from.get("username", "").lower()
+                        or "urza" in reply_from.get("first_name", "").lower()
+                    )
+                )
+
+                ahora = time.time()
+                clave_interaccion = (chat_id, user_id)
+                ultimo_contacto = _ultimas_interacciones_grupo.get(clave_interaccion, 0.0)
+                en_dialogo_activo = (ahora - ultimo_contacto) <= VENTANA_CONVERSACION_SEGUNDOS
+
                 fue_mencionado = (
                     mencion_oficial in caption_lower
                     or any(alias in caption_lower for alias in alias_comunes)
                     or caption_lower.startswith("karn")
                     or caption_lower.startswith("urza")
                     or es_reply_al_bot
+                    or en_dialogo_activo
                 )
                 if not fue_mencionado:
                     return
+
+                _ultimas_interacciones_grupo[clave_interaccion] = ahora
 
                 import re
                 caption = (
@@ -202,12 +226,31 @@ class Command(BaseCommand):
         if not texto_raw:
             return
 
-        # En grupos, responder si mencionan al bot (@UrzaTiendaBot, urza, etc.), si le responden (reply) o si es un comando
+        # En grupos, responder si:
+        # 1. Mencionan al bot (@UrzaTiendaBot, @urza, etc.) o arranca con "Urza"
+        # 2. Le responden directo (Reply / Responder mensaje)
+        # 3. Es un comando (/ping, /start, etc.)
+        # 4. Hay una conversación activa en curso con ese usuario (ventana de 3 minutos tras el último turno)
         if chat_type in ("group", "supergroup"):
             mencion_oficial = f"@{bot_username.lower()}"
             alias_comunes = ["@urza", "@urzabot", "@urzatiendabot", "@urzamtgbot"]
-            es_reply_al_bot = msg.get("reply_to_message", {}).get("from", {}).get("is_bot")
+            reply_msg = msg.get("reply_to_message", {})
+            reply_from = reply_msg.get("from", {})
+            # Detecta si el reply es a un bot o específicamente a Urza (por username o bot_id)
+            es_reply_al_bot = bool(
+                reply_from.get("is_bot")
+                and (
+                    reply_from.get("username", "").lower() == bot_username.lower()
+                    or "urza" in reply_from.get("username", "").lower()
+                    or "urza" in reply_from.get("first_name", "").lower()
+                )
+            )
             texto_lower = texto_raw.lower()
+
+            ahora = time.time()
+            clave_interaccion = (chat_id, user_id)
+            ultimo_contacto = _ultimas_interacciones_grupo.get(clave_interaccion, 0.0)
+            en_dialogo_activo = (ahora - ultimo_contacto) <= VENTANA_CONVERSACION_SEGUNDOS
 
             fue_mencionado = (
                 mencion_oficial in texto_lower
@@ -215,10 +258,14 @@ class Command(BaseCommand):
                 or texto_lower.startswith("urza")
                 or es_reply_al_bot
                 or texto_raw.startswith("/")
+                or en_dialogo_activo
             )
 
             if not fue_mencionado:
                 return
+
+            # Actualizar marca de tiempo de la interacción activa
+            _ultimas_interacciones_grupo[clave_interaccion] = ahora
 
             # Limpiar mención del texto para pasárselo limpio al agente
             texto_raw = (
