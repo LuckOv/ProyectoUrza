@@ -28,6 +28,8 @@ No hay cuentas de jugador: el carrito se ata a la conversación (`thread_id`) y 
 - RAG de lore: **Chroma** (`backend/lore_db/`, colección `lore_mtg`), mismos embeddings/rerank/ChatGroq reusados de `reglas.py`; corpus = intros de la **MTG Wiki** (`mtg.fandom.com`).
 - RAG de mazos: **Chroma** (`backend/mazos_db/`, colección `mazos_mtg`), mismos embeddings/rerank/ChatGroq reusados; corpus curado sobre curva de maná, bases de maná (Frank Karsten), arquetipos (Aggro/Midrange/Control/Combo/Tribal/Commander) y metodología de upgrades y cortes (`corpus_mazos.py`).
 - Visión por computadora: **Karn** (`backend/agentes/karn.py`), con Google Gemini 2.5 Flash (`google-genai`), para identificación de cartas + stock y análisis de mesa de juego + dictamen de jugadas junto a Ajani.
+- Voz y Audio (Telegram): Transcripción de mensajes de voz y notas de audio en `backend/agentes/voz.py` con Groq Whisper Large v3 (`whisper-large-v3`) con prompt contextual de MTG y fallback a Gemini 2.5 Flash, más refinamiento fonético de cartas con ChatGroq.
+- Bot de Telegram: `run_telegram_bot.py` en Long Polling integrado con LangGraph, soporte de grupos con diálogo fluido (3 min), menú nativo `/comandos` y notificaciones en tiempo real al dueño de la tienda.
 - Frontend: **React 19 + Vite 8**.
 - Datos: SQLite `backend/urza.db` mapeada con modelos Django ORM (`tienda.models`) e índices nativos, API de **Scryfall** (fichas, imágenes, impresiones), **dolarapi.com** (cotización). `backend/inventario.csv` sólo se usa para la importación inicial.
 
@@ -114,7 +116,8 @@ backend/
 | `tienda/tienda.py` | Carrito por `thread_id` y pedidos. `validar_retiro` controla día/hora contra los horarios configurados. `confirmar_pedido` (chat) y `crear_pedido_manual` (panel) reservan el stock en la misma transacción. Estados `pendiente` / `realizada` / `rechazada`: rechazar devuelve las cartas al stock y reactivar las vuelve a reservar. |
 | `tienda/telegram_notif.py` | Notificaciones automáticas de pedidos y propuestas de venta al dueño vía Telegram, descarga de fotos y mensajería saliente. |
 | `tienda/admin_reportes.py` | Reportes ejecutivos para el dueño vía Telegram móvil (ventas, pedidos pendientes, alertas de stock y precio). |
-| `tienda/management/commands/run_telegram_bot.py` | Comando Django (`python manage.py run_telegram_bot`) para correr el bot de Telegram en Long Polling con soporte de texto, visión con Karn y modo dueño. |
+| `tienda/management/commands/run_telegram_bot.py` | Comando Django (`python manage.py run_telegram_bot`) para correr el bot de Telegram en Long Polling con soporte de texto, voz/audio, visión con Karn y modo dueño. |
+| `agentes/voz.py` | Transcripción de audios y notas de voz con doble motor (Groq Whisper Large v3 + Gemini Flash) y refinamiento fonético de jerga MTG. |
 | `agentes/reglas.py` | **Ajani**, subagente juez (imports de torch/Chroma lazy; si faltan, `motivo_no_disponible` lo explica): traduce la pregunta a inglés → `similarity_search` (k=15) → rerank (k=6) → ChatGroq juez que cita números de regla. Expansión léxica ES→EN. |
 | `agentes/lore.py` | **Teferi**, subagente erudito de lore: mismo pipeline que `reglas.py` pero con `lore_db/` (colección `lore_mtg`); reutiliza sus singletons (`_traducir`, `_juez_llm`, embeddings, rerank). Cita los artículos de origen. |
 | `agentes/saheeli.py` | **Saheeli**, subagente constructora de mazos con RAG propio (`mazos_db/`, colección `mazos_mtg`): recupera teoría de curvas y arquetipos, analiza el inventario real y asesora cortes, sinergias y cartas recomendadas en stock con su precio. |
@@ -208,11 +211,13 @@ Convención: cada feature con criterios de aceptación medibles y estado `[Imple
 - *Como* vendedor, *quiero* que URZA me avise al instante cuando un jugador confirma un pedido o envía una propuesta de venta, *para* estar al tanto desde mi celular sin tener que mirar la base o Mesa Central.
 - Implementado: Notificaciones salientes en `tienda/telegram_notif.py` disparadas en `confirmar_pedido` y `propuestas.crear`. Envía mensaje formateado en Markdown al `TELEGRAM_OWNER_ID` con los datos del cliente, horario de retiro, total e items.
 
-**FE-18 · Bot de Telegram de URZA (Atención, Visión y Modo Dueño)** — **[Implementado]**
-- *Como* jugador o dueño de la tienda, *quiero* comunicarme con URZA desde Telegram (en grupos o privado), consultar cartas, armar mazos, mandar fotos para que Karn las examine y, como dueño, pedir reportes de ventas y alertas.
+**FE-18 · Bot de Telegram de URZA (Atención, Visión, Voz y Modo Dueño)** — **[Implementado]**
+- *Como* jugador o dueño de la tienda, *quiero* comunicarme con URZA desde Telegram (en grupos o privado), consultar cartas, armar mazos, mandar fotos para que Karn las examine, enviar notas de voz, y, como dueño, pedir reportes de ventas y alertas.
 - Comportamiento: comando Django `python manage.py run_telegram_bot` en modo Long Polling (ideal para ejecución local sin IP pública).
   - Jugadores: chatean con el grafo completo de Urza (`tg_{chat_id}`), Ajani, Teferi y Saheeli.
   - Visión con Karn: recepción de fotos para identificar cartas y stock, o fotos de mesa con dictamen de jugadas.
+  - Mensajes de Voz y Audio (STT): transcripción con Groq Whisper Large v3 (fallback Gemini 2.5 Flash), sesgo temático de MTG y corrector fonético con ChatGroq.
+  - Grupos: soporte de menciones (`@UrzaTiendaBot`, alias `@urza`, `@urzabot`), comandos y ventana de conversación fluida de 3 minutos. Menú interactivo oficial (`/comandos`, `/ayuda`, `/ping`, `/estado`).
   - Dueño (`TELEGRAM_OWNER_ID`): comandos ejecutivos `/ventas`, `/pedidos`, `/alertas`.
 
 **FE-08 · Alta de stock (solo vendedor)** — **[Implementado desde el panel]** · pendiente: hacerlo también por chat

@@ -1,103 +1,125 @@
-# URZA
+# URZA — Asistente Inteligente de Tienda de Magic: The Gathering
 
-**URZA es el asistente de chat de una tienda de cartas de Magic: The Gathering.** Le preguntás por una carta, un precio, o cómo se resuelve una jugada, y te responde pensando por vos. Es como hablar con un vendedor que además es juez de reglas.
+**URZA es un asistente virtual multiagente diseñado para tiendas de cartas de Magic: The Gathering.** 
+Permite a los jugadores consultar stock físico, comparar precios de mercado, estudiar reglas oficiales con un juez, explorar el lore del multiverso, armar mazos competitivos, reconocer cartas y mesas de juego por fotos, y realizar compras o vender cartas a la tienda tanto desde la **Web** como desde **Telegram** (con soporte de **mensajes de texto y notas de voz**).
 
----
-
-## Qué puede hacer hoy
-
-- **Saber si hay una carta en stock**: "¿Tenés Cavern of Souls?" → te dice cuántas hay y en qué edición.
-- **Pasarle el precio**: "Precio de Llanowar Elves" → te dice el precio de la tienda en pesos (y, si querés, la referencia del mercado europeo).
-- **Mostrarte la carta**: cuando hablás de una, aparece la carta para que la reconozcas de un vistazo.
-- **Comprar desde el chat**: le decís qué cartas querés, Urza las va sumando al carrito y te pregunta si querés algo más o cerrar la compra. Al cerrar te pide nombre, apellido y qué día y a qué hora pasás a retirar (dentro del horario del local). No hace falta crear cuenta.
-- **Resolver dudas del juego**: "¿Puedo responder con un instante antes de que mi criatura muera?" → te contesta con base en las reglas oficiales y te cita la regla.
-
-- **Contarte el lore** de planos y personajes, y **armarte un mazo** con lo que hay en la tienda (las cartas aparecen en abanico).
-- **Ver todas las cartas** de la tienda con filtros por color, PSA, precio y expansión.
-- **Ofrecerle una carta a la tienda**: "tengo una X en PSA 9 a tanto" → se abre un formulario para elegir la carta exacta y dejar nombre, apellido y mail.
-
-Detrás hay un equipo: **Urza** orquesta y consulta a **Tibalt** (vendedor), **Ajani** (juez de reglas), **Teferi** (lore) y **Saheeli** (armado de mazos).
-
-URZA habla en español (de Argentina, como un vendedor de barrio).
-
-## Panel del vendedor (Mesa Central)
-
-En `http://localhost:5173/vendedor.html`, con la clave de vendedor:
-
-- **Inventario**: todas las cartas con foto, grado (PSA), precio y stock. Para agregar una, la buscás en Scryfall, elegís la impresión y cargás cuántas tenés.
-- **Pedidos**: calendario con los retiros de cada día; marcás un pedido como entregado o rechazado (si se rechaza, las cartas vuelven al stock).
-- **Propuestas**: las cartas que los clientes le ofrecen a la tienda desde el chat (con nombre, apellido y mail), para aceptarlas, cargarlas al stock o rechazarlas.
-- **Dashboard**: cuánto stock hay, cuánto vale, pedidos abiertos, ventas del mes, color / cartas / expansiones más vendidas y alertas de cambios bruscos de precio y stock.
-- **Historial**: el protocolo de todos los pedidos, con tus comentarios, exportable a CSV.
-- **Configuración**: horarios del local, precio del dólar (automático o manual) y descuentos.
-
-## Lo que viene (en camino)
-
-- **Alta de stock por chat para el vendedor** (desde el panel ya se puede).
-- **Reconocimiento de fotos (a futuro)**: sacar o enviar una foto de una carta. Los jugadores podrán preguntar si hay stock; el vendedor podrá cargarla al stock directamente desde la foto.
+Detrás de Urza opera un equipo de planeswalkers especializados:
+- 🧙‍♂️ **Urza**: Orquestador central (LangGraph + ChatGroq Qwen3.8-27b).
+- 😈 **Tibalt**: Vendedor (stock local en SQLite, precios en ARS con dólar dinámico, carrito y compras).
+- 🦁 **Ajani**: Juez oficial de reglas (RAG sobre Comprehensive Rules con ChromaDB y reranker cross-encoder).
+- ⏳ **Teferi**: Erudito e historiador (RAG sobre el lore de MTG Wiki).
+- ⚙️ **Saheeli**: Constructora de mazos (RAG sobre teoría de curvas de maná, arquetipos y stock real).
+- 👁️ **Karn**: Visión computacional (Gemini 2.5 Flash para cartas físicas y arbitraje de campos de batalla).
 
 ---
 
-## Requisitos
+## 🚀 Capacidades y Funcionalidades
 
-- **Python 3.13** y **Node.js** (para el frontend).
-- Una **clave de Groq** (gratis): creala en https://console.groq.com.
-- (Opcional) Una clave de HuggingFace (`HF_TOKEN`) para que las descargas de modelos sean más rápidas.
+### Para los Jugadores (Web & Telegram)
+- **Consultar Stock y Precios**: Respuestas exactas con variantes por edición, estado de conservación o graduación (PSA 1–10) y conversión automática a pesos según el dólar configurado.
+- **Precio de Referencia del Mercado**: Cotización de mercado europeo vía CardMarket / Scryfall en euros para cartas fuera de inventario.
+- **Ficha 3D Interactiva y Abanico**: Visualización de cartas en 3D en la tienda web con selector de variantes y abanico dinámico de sugerencias de mazo.
+- **Juez de Reglas con Cita Oficial**: Resolución precisa de dudas sobre interacción, prioridad y fases citando números de regla oficiales de Magic.
+- **Visión Multimodal (Karn)**: Subí o sacá una foto a una carta física para cotizarla y saber si hay stock, o enviá una foto de tu campo de batalla con permanentes girados para arbitrar una jugada.
+- **Notas de Voz y Audios en Telegram**: Mandale audios o notas de voz a Urza; el sistema transcribe en milisegundos con Groq Whisper Large v3 (o Gemini Flash) y aplica un corrector fonético entrenado en la jerga de MTG.
+- **Compra sin registro**: Armado de carrito charlando con el bot y reserva de stock inmediata indicando día y hora de retiro en el local.
+- **Ofrecer Cartas a la Tienda**: Propuestas de venta desde el chat con buscador exhaustivo de Scryfall y carga automática de datos.
 
-## Instalación
+### Para el Vendedor / Dueño de la Tienda
+- **Mesa Central (`/vendedor.html`)**: Panel de gestión protegido por clave con grilla de inventario, edición rápida, alertas de precio, control de pedidos en calendario y métricas de ventas.
+- **Django Admin (`/admin/`)**: Administración nativa del backend Django (usuario `admin`, clave `urza123`).
+- **Modo Dueño en Telegram**: El dueño de la tienda recibe notificaciones automáticas inmediatas ante cada compra o propuesta de venta, y puede solicitar desde su Telegram personal reportes ejecutivos con `/ventas`, `/pedidos` y `/alertas`.
+- **Interacción Fluida en Grupos**: El bot puede participar en grupos de Telegram respetando ventanas de conversación de 3 minutos para responder de corrido sin necesidad de etiquetarlo en cada mensaje.
 
-1. Instalá las dependencias de Python con `uv`:
-   ```powershell
-   uv sync
-   ```
+---
 
-2. Instalá las dependencias del frontend:
-   ```powershell
-   cd frontend
-   npm install
-   cd ..
-   ```
+## 🛠️ Requisitos Técnicos
 
-3. Cargá tus claves. Creá el archivo `backend\.env` y poné adentro:
-   ```
-   GROQ_API_KEY=tu_clave_acá
-   VENDEDOR_CLAVE=la_clave_del_panel
-   ```
+- **Python 3.13** con gestor de paquetes **`uv`** (o pip/venv).
+- **Node.js 18+** y npm (para el frontend en React 19 + Vite).
+- Claves de API en `backend/.env`:
+  - `GROQ_API_KEY`: Para el razonamiento de Urza, Ajani, Teferi, Saheeli y transcripción Whisper.
+  - `GEMINI_API_KEY`: Para visión por computadora con Karn y respaldo de transcripción.
+  - `TELEGRAM_BOT_TOKEN` y `TELEGRAM_OWNER_ID`: Para el bot de Telegram y modo dueño.
+  - `VENDEDOR_CLAVE`: Clave de acceso a Mesa Central (por defecto: `urza`).
 
-## Cómo levantarlo
+---
 
-**Backend (Django)** (parado dentro de la carpeta `backend/`):
+## ⚡ Guía Rápida de Inicio
+
+### 1. Instalación inicial
 ```powershell
-..\.venv\Scripts\python.exe manage.py runserver 8000
+# Dependencias de Python
+uv sync
+
+# Dependencias de Frontend
+cd frontend
+npm install
+cd ..
 ```
-- Estado de la API: `http://localhost:8000/salud` responde `{"ok": true}`.
-- Documentación interactiva (Swagger): `http://localhost:8000/docs`.
-- Panel **Django Admin**: `http://localhost:8000/admin/` (usuario `admin`, clave `urza123`).
 
-**Frontend** (parado dentro de la carpeta `frontend/`):
-```powershell
-npm run dev
+### 2. Configuración de credenciales
+Creá el archivo `backend/.env` (podés guiarte con `backend/.env.example`):
+```ini
+GROQ_API_KEY=tu_clave_de_groq
+GEMINI_API_KEY=tu_clave_de_gemini
+VENDEDOR_CLAVE=urza
+TELEGRAM_BOT_TOKEN=tu_token_de_botfather
+TELEGRAM_OWNER_ID=tu_id_de_telegram
 ```
-Después abrí `http://localhost:5173` en el navegador y chateá. El panel del vendedor está en `http://localhost:5173/vendedor.html`.
 
-### Usarlo desde el celular u otra compu del mismo wifi
-
-Todo corre en la compu que levanta el backend: los demás sólo necesitan el navegador, no instalan nada.
-
-1. Levantá backend y frontend como siempre.
-2. `npm run dev` muestra dos direcciones: `Local` y `Network` (por ejemplo `http://192.168.0.15:5173`). Desde el otro dispositivo abrí la de **Network**.
-3. La primera vez Windows pregunta si deja pasar a Node por el firewall: aceptá para **redes privadas**.
-
-### Bases del bot (reglas y lore)
-
-Ajani (reglas) y Teferi (lore) responden buscando en dos bases que se arman en la compu que corre el backend y **no se suben a git**. Se instalan desde el panel: **Configuración → Bases del bot → Instalar todo** (muestra el avance; las reglas tardan minutos, el lore puede tardar horas y si se corta retoma). También se pueden copiar las carpetas `backend/reglas_db`, `backend/lore_db` y `backend/lore` de un compañero que ya las tenga.
-
-### Base de reglas (una sola vez)
-
-Si el agente no responde dudas de reglas, hay que cargar primero las reglas completas:
+### 3. Ingesta de Bases de Conocimiento (RAG)
+Si es la primera vez que se ejecuta en tu equipo:
 ```powershell
 cd backend
-uv run python -m ingesta.ingestar_reglas
+uv run python -m ingesta.ingestar_reglas   # Descarga e indexa Comprehensive Rules
+uv run python -m ingesta.ingestar_mazos    # Indexa teoría de armado de mazos
+```
+*(Nota: también se pueden instalar o monitorear desde Mesa Central en la pestaña Configuración → Bases del bot).*
+
+---
+
+## 💻 Comandos de Ejecución
+
+Consultá el archivo completo **[`COMANDOS.md`](COMANDOS.md)** para más detalles.
+
+### Terminal 1: Backend (Django)
+```powershell
+cd backend
+..\.venv\Scripts\python.exe manage.py runserver 8000
+```
+- API REST & Salud: `http://localhost:8000/salud`
+- Documentación OpenAPI Swagger: `http://localhost:8000/docs`
+- Django Admin: `http://localhost:8000/admin/`
+
+> **Nota:** Al arrancar el backend, si `TELEGRAM_BOT_TOKEN` está configurado, el bot de Telegram **se inicia automáticamente en segundo plano** y envía un saludo de `🟢 URZA ONLINE`.
+
+### Terminal 2: Frontend (React + Vite)
+```powershell
+cd frontend
+npm run dev
+```
+- Tienda para Jugadores: `http://localhost:5173/`
+- Mesa Central (Vendedor): `http://localhost:5173/vendedor.html`
+
+### Terminal 3 (Opcional): Bot de Telegram Dedicado
+Si querés ver los logs de Telegram de forma aislada en su propia consola:
+```powershell
+cd backend
+..\.venv\Scripts\python.exe manage.py run_telegram_bot
+```
+
+---
+
+## 🧪 Pruebas Automatizadas
+
+El proyecto cuenta con una suite integral de integración con **120 pruebas automatizadas** que validan la API, el orquestador LangGraph, Scryfall simulado, compras concurrentes con reserva de stock y el bot de Telegram:
+
+```powershell
+cd backend
+uv run --with pytest python -m pytest tests -q
+```
+Resultado: `120 passed in ~27s`.
 ```
 Esto descarga las reglas oficiales y las indexa. Puede tardar un rato la primera vez.
 
