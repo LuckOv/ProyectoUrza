@@ -123,3 +123,58 @@ def test_telegram_notificar_inicio_y_detencion(monkeypatch):
     assert enviados[0][0] == "999888" and "DESCONECTADO" in enviados[0][1]
     assert enviados[1][0] == "-1001234" and "fuera de línea" in enviados[1][1]
 
+
+def test_voz_transcribir_audio_groq(monkeypatch):
+    from agentes import voz
+
+    monkeypatch.setenv("GROQ_API_KEY", "dummy_groq_key")
+
+    class FalsaTranscripcion:
+        def __str__(self):
+            return "¿Tenés Cavern of Souls en stock?"
+
+    class FalsoAudio:
+        class transcriptions:
+            @staticmethod
+            def create(*args, **kwargs):
+                return FalsaTranscripcion()
+
+    class FalsoGroq:
+        def __init__(self, *args, **kwargs):
+            self.audio = FalsoAudio()
+
+    import groq
+    monkeypatch.setattr(groq, "Groq", FalsoGroq)
+
+    texto = voz.transcribir_audio(b"dummy_ogg_bytes", filename="audio.ogg", mime_type="audio/ogg")
+    assert texto == "¿Tenés Cavern of Souls en stock?"
+
+
+def test_telegram_bot_procesar_audio(monkeypatch):
+    from tienda.management.commands.run_telegram_bot import Command
+    from agentes import voz
+
+    cmd = Command()
+    mensajes_enviados = []
+
+    monkeypatch.setattr(telegram_notif, "descargar_archivo", lambda fid: (b"bytes_audio", "audio/ogg"))
+    monkeypatch.setattr(voz, "transcribir_audio", lambda b, **kwargs: "¿Cuánto sale Llanowar Elves?")
+    monkeypatch.setattr(telegram_notif, "enviar_mensaje", lambda cid, txt, **kwargs: mensajes_enviados.append((cid, txt)))
+    monkeypatch.setattr(cmd, "enviar_accion", lambda cid, act: None)
+
+    update = {
+        "update_id": 1001,
+        "message": {
+            "message_id": 50,
+            "chat": {"id": 12345, "type": "private"},
+            "from": {"id": 12345, "first_name": "Lucas"},
+            "voice": {"file_id": "file_voice_123", "mime_type": "audio/ogg"},
+        },
+    }
+
+    cmd.procesar_update(update, bot_username="UrzaTiendaBot", owner_id="417409540")
+
+    assert len(mensajes_enviados) >= 1
+    ultimo_mensaje = mensajes_enviados[-1][1]
+    assert "🎙️ _«¿Cuánto sale Llanowar Elves?»_" in ultimo_mensaje
+

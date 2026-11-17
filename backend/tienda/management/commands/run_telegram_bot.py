@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage
 
 from agentes.agent_sales import sin_razonamiento
 from agentes.graph import app_graph
-from agentes import karn
+from agentes import karn, voz
 from tienda import admin_reportes, cartas, telegram_notif
 
 logger = logging.getLogger("urza.telegram")
@@ -170,10 +170,57 @@ class Command(BaseCommand):
         texto_raw = (msg.get("text") or "").strip()
         caption = (msg.get("caption") or "").strip()
         photos = msg.get("photo") or []
+        voice = msg.get("voice") or msg.get("audio")
 
         es_dueno = bool(owner_id and user_id == str(owner_id) and chat_type == "private")
 
-        # --- A. FOTOS RECIBIDAS (Subagente Karn) ---
+        # --- A. NOTAS DE VOZ Y AUDIOS (Transcripción STT con Groq Whisper / Gemini) ---
+        if voice:
+            if chat_type in ("group", "supergroup"):
+                reply_msg = msg.get("reply_to_message", {})
+                reply_from = reply_msg.get("from", {})
+                es_reply_al_bot = bool(
+                    reply_from.get("is_bot")
+                    and (
+                        reply_from.get("username", "").lower() == bot_username.lower()
+                        or "urza" in reply_from.get("username", "").lower()
+                        or "urza" in reply_from.get("first_name", "").lower()
+                    )
+                )
+
+                ahora = time.time()
+                clave_interaccion = (chat_id, user_id)
+                ultimo_contacto = _ultimas_interacciones_grupo.get(clave_interaccion, 0.0)
+                en_dialogo_activo = (ahora - ultimo_contacto) <= VENTANA_CONVERSACION_SEGUNDOS
+
+                if not (es_reply_al_bot or en_dialogo_activo):
+                    return
+
+                _ultimas_interacciones_grupo[clave_interaccion] = ahora
+
+            self.enviar_accion(chat_id, "record_voice")
+            file_id = voice.get("file_id")
+            mime_type = voice.get("mime_type", "audio/ogg")
+            descarga = telegram_notif.descargar_archivo(file_id)
+
+            if not descarga:
+                telegram_notif.enviar_mensaje(chat_id, "⚠️ No pude descargar tu mensaje de audio. ¿Podrías intentar reenviarlo?")
+                return
+
+            audio_bytes, mime = descarga
+            texto_transcrito = voz.transcribir_audio(audio_bytes, filename="voice.ogg", mime_type=mime or mime_type)
+
+            if not texto_transcrito:
+                telegram_notif.enviar_mensaje(chat_id, "👂 Disculpá, no logré entender claramente lo que dijiste en el audio. ¿Podrías repetirlo o escribirlo?")
+                return
+
+            # Indicar lo que se escuchó como prefijo antes de pasarlo al agente
+            texto_raw = texto_transcrito
+            es_audio_usuario = True
+        else:
+            es_audio_usuario = False
+
+        # --- B. FOTOS RECIBIDAS (Subagente Karn) ---
         if photos:
             if chat_type in ("group", "supergroup"):
                 mencion_oficial = f"@{bot_username.lower()}"
@@ -345,6 +392,8 @@ class Command(BaseCommand):
                 f"👁️ *Visión y Análisis (Golem Karn):*\n"
                 f"• Mandame una *foto de una carta* para cotizarla y ver stock.\n"
                 f"• Mandame una *foto del campo de batalla* con tu duda para que Ajani y yo arbitremos la jugada.\n\n"
+                f"🎙️ *Mensajes de Voz:*\n"
+                f"• ¡Podés mandarme un *audio o nota de voz* directamente y te responderé con la misma precisión!\n\n"
                 f"💡 *Tip:* En el grupo podés mencionarme como `@{bot_username}` o responder a cualquiera de mis mensajes."
             )
             telegram_notif.enviar_mensaje(chat_id, bienvenida)
@@ -366,6 +415,9 @@ class Command(BaseCommand):
 
             if not texto_respuesta:
                 texto_respuesta = "No pude procesar tu mensaje en este momento. Probá reformularlo."
+
+            if es_audio_usuario:
+                texto_respuesta = f"🎙️ _«{texto_raw}»_\n\n{texto_respuesta}"
 
             telegram_notif.enviar_mensaje(chat_id, texto_respuesta)
 

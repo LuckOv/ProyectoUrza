@@ -93,6 +93,12 @@ def enviar_foto(chat_id: int | str, foto: bytes | str, caption: str = "", parse_
 
 def descargar_foto(file_id: str) -> tuple[bytes, str] | None:
     """Descarga los bytes de una foto recibida por Telegram a partir de su file_id."""
+    return descargar_archivo(file_id)
+
+
+def descargar_archivo(file_id: str) -> tuple[bytes, str] | None:
+    """Descarga los bytes de cualquier archivo (foto, voz, audio) desde Telegram usando getFile.
+    Retorna (bytes, mime_type) o None si falla."""
     tok = token_bot()
     if not tok or not file_id:
         return None
@@ -106,19 +112,29 @@ def descargar_foto(file_id: str) -> tuple[bytes, str] | None:
             return None
 
         url_descarga = f"https://api.telegram.org/file/bot{tok}/{file_path}"
-        r_file = requests.get(url_descarga, timeout=15)
+        r_file = requests.get(url_descarga, timeout=20)
         if not r_file.ok:
             return None
 
-        mime = "image/jpeg"
-        if file_path.lower().endswith(".png"):
+        fl = file_path.lower()
+        if fl.endswith(".png"):
             mime = "image/png"
-        elif file_path.lower().endswith(".webp"):
+        elif fl.endswith(".webp"):
             mime = "image/webp"
+        elif fl.endswith(".ogg") or fl.endswith(".oga"):
+            mime = "audio/ogg"
+        elif fl.endswith(".mp3"):
+            mime = "audio/mp3"
+        elif fl.endswith(".wav"):
+            mime = "audio/wav"
+        elif fl.endswith(".m4a"):
+            mime = "audio/m4a"
+        else:
+            mime = "image/jpeg"
 
         return r_file.content, mime
     except Exception as e:
-        logger.warning(f"Error descargando foto {file_id} de Telegram: {e}")
+        logger.warning(f"Error descargando archivo {file_id} de Telegram: {e}")
         return None
 
 
