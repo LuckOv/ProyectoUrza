@@ -158,11 +158,29 @@ class Command(BaseCommand):
         # --- A. FOTOS RECIBIDAS (Subagente Karn) ---
         if photos:
             if chat_type in ("group", "supergroup"):
-                mencion = f"@{bot_username.lower()}"
+                mencion_oficial = f"@{bot_username.lower()}"
+                alias_comunes = ["@urza", "@urzabot", "@urzatiendabot"]
+                caption_lower = caption.lower()
                 es_reply_al_bot = msg.get("reply_to_message", {}).get("from", {}).get("is_bot")
-                if not (mencion in caption.lower() or es_reply_al_bot):
+                fue_mencionado = (
+                    mencion_oficial in caption_lower
+                    or any(alias in caption_lower for alias in alias_comunes)
+                    or caption_lower.startswith("karn")
+                    or caption_lower.startswith("urza")
+                    or es_reply_al_bot
+                )
+                if not fue_mencionado:
                     return
-                caption = caption.replace(f"@{bot_username}", "").replace(f"@{bot_username.lower()}", "").strip()
+
+                import re
+                caption = (
+                    caption
+                    .replace(f"@{bot_username}", "")
+                    .replace(f"@{bot_username.lower()}", "")
+                )
+                for alias in alias_comunes:
+                    caption = re.sub(re.escape(alias), "", caption, flags=re.IGNORECASE)
+                caption = re.sub(r"^\s*(urza|karn)\s*[:,]?\s*", "", caption, flags=re.IGNORECASE).strip()
 
             self.enviar_accion(chat_id, "typing")
             self.procesar_foto(chat_id, photos, caption, user_name)
@@ -172,14 +190,38 @@ class Command(BaseCommand):
         if not texto_raw:
             return
 
-        # En grupos, responder solo si mencionan al bot, le responden o es comando
+        # En grupos, responder si mencionan al bot (@UrzaTiendaBot, urza, etc.), si le responden (reply) o si es un comando
         if chat_type in ("group", "supergroup"):
-            mencion = f"@{bot_username.lower()}"
+            mencion_oficial = f"@{bot_username.lower()}"
+            alias_comunes = ["@urza", "@urzabot", "@urzatiendabot"]
             es_reply_al_bot = msg.get("reply_to_message", {}).get("from", {}).get("is_bot")
-            if not (mencion in texto_raw.lower() or es_reply_al_bot or texto_raw.startswith("/")):
+            texto_lower = texto_raw.lower()
+
+            fue_mencionado = (
+                mencion_oficial in texto_lower
+                or any(alias in texto_lower for alias in alias_comunes)
+                or texto_lower.startswith("urza")
+                or es_reply_al_bot
+                or texto_raw.startswith("/")
+            )
+
+            if not fue_mencionado:
                 return
-            # Limpiar mención del texto
-            texto_raw = texto_raw.replace(f"@{bot_username}", "").replace(f"@{bot_username.lower()}", "").strip()
+
+            # Limpiar mención del texto para pasárselo limpio al agente
+            texto_raw = (
+                texto_raw
+                .replace(f"@{bot_username}", "")
+                .replace(f"@{bot_username.lower()}", "")
+            )
+            for alias in alias_comunes:
+                # Reemplazo insensible a mayúsculas
+                import re
+                texto_raw = re.sub(re.escape(alias), "", texto_raw, flags=re.IGNORECASE)
+
+            # Si empezó con "Urza," o "Urza:", limpiarlo también
+            import re
+            texto_raw = re.sub(r"^\s*urza\s*[:,]?\s*", "", texto_raw, flags=re.IGNORECASE).strip()
 
         # Comandos administrativos exclusivos para el dueño
         if es_dueno and texto_raw.startswith("/"):
