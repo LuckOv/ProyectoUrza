@@ -10,7 +10,12 @@ Maneja la comunicación saliente hacia la API de Telegram:
 
 import logging
 import os
+from pathlib import Path
 import requests
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 logger = logging.getLogger("urza.telegram")
 
@@ -21,6 +26,10 @@ def token_bot() -> str:
 
 def owner_id() -> str:
     return os.environ.get("TELEGRAM_OWNER_ID", "").strip()
+
+
+def grupo_id() -> str:
+    return os.environ.get("TELEGRAM_GRUPO_ID", "").strip()
 
 
 def esta_configurado() -> bool:
@@ -159,3 +168,40 @@ def notificar_propuesta(propuesta: dict) -> bool:
         f"ℹ️ _Entrá a Mesa Central -> Propuestas para aceptarla o rechazarla._"
     )
     return notificar_dueno(mensaje)
+
+
+def notificar_inicio(bot_username: str) -> bool:
+    """Envía un saludo y aviso de que el bot está activo al dueño y al grupo."""
+    ok = True
+    oid = owner_id()
+    if oid:
+        mensaje_dueno = (
+            f"🟢 *URZA ONLINE* (@{bot_username})\n\n"
+            f"El asistente de la tienda y bot de Telegram ya está operativo y escuchando en tu PC local.\n\n"
+            f"• Respondé `/ping` para verificar conectividad.\n"
+            f"• Respondé `/ventas` o `/ayuda` para ver opciones de dueño."
+        )
+        ok = enviar_mensaje(oid, mensaje_dueno)
+
+    gid = grupo_id()
+    if gid:
+        mensaje_grupo = (
+            f"🧙‍♂️ *URZA está en línea* (@{bot_username})\n\n"
+            f"¡Saludos! El asistente de la tienda ya está activo y listo para responder preguntas de stock, "
+            f"reglas de juego (Ajani), lore (Teferi), armado de mazos (Saheeli) y fotos de cartas o jugadas (Karn)."
+        )
+        enviar_mensaje(gid, mensaje_grupo)
+    return ok
+
+
+def notificar_detencion() -> bool:
+    """Avisa al dueño y al grupo que el bot se detuvo."""
+    ok = True
+    oid = owner_id()
+    if oid:
+        ok = enviar_mensaje(oid, "🔴 *URZA DESCONECTADO:* El servicio local de Telegram se ha detenido.")
+    gid = grupo_id()
+    if gid:
+        enviar_mensaje(gid, "💤 *URZA fuera de línea:* El servicio local se ha detenido.")
+    return ok
+

@@ -88,7 +88,7 @@ def test_telegram_notificar_propuesta_formato(monkeypatch):
     assert "$1,500.00" in texto
 
 
-def test_admin_reportes_sin_errores():
+def test_admin_reportes_sin_errores(cliente):
     ventas = admin_reportes.resumen_ventas()
     assert "REPORTE DE VENTAS" in ventas
 
@@ -97,3 +97,29 @@ def test_admin_reportes_sin_errores():
 
     alertas = admin_reportes.resumen_alertas()
     assert ("ALERTAS DE INVENTARIO" in alertas) or ("Inventario en orden" in alertas)
+
+
+def test_telegram_notificar_inicio_y_detencion(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:test_token")
+    monkeypatch.setenv("TELEGRAM_OWNER_ID", "999888")
+    monkeypatch.setenv("TELEGRAM_GRUPO_ID", "-1001234")
+
+    enviados = []
+
+    def mock_enviar(chat_id, texto, **kwargs):
+        enviados.append((chat_id, texto))
+        return True
+
+    monkeypatch.setattr(telegram_notif, "enviar_mensaje", mock_enviar)
+
+    telegram_notif.notificar_inicio("UrzaTestBot")
+    assert len(enviados) == 2
+    assert enviados[0][0] == "999888" and "URZA ONLINE" in enviados[0][1]
+    assert enviados[1][0] == "-1001234" and "en línea" in enviados[1][1]
+
+    enviados.clear()
+    telegram_notif.notificar_detencion()
+    assert len(enviados) == 2
+    assert enviados[0][0] == "999888" and "DESCONECTADO" in enviados[0][1]
+    assert enviados[1][0] == "-1001234" and "fuera de línea" in enviados[1][1]
+

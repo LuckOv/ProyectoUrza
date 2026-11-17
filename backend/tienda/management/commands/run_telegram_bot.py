@@ -10,7 +10,9 @@ Funcionalidades:
 - Modo Dueño móvil: comandos ejecutivos (/ventas, /pedidos, /alertas) exclusivos para el dueño.
 """
 
+import logging
 import sys
+import threading
 import time
 import requests
 from django.core.management.base import BaseCommand
@@ -20,6 +22,96 @@ from agentes.agent_sales import sin_razonamiento
 from agentes.graph import app_graph
 from agentes import karn
 from tienda import admin_reportes, cartas, telegram_notif
+
+logger = logging.getLogger("urza.telegram")
+
+_bot_corriendo = False
+_hilo_bot = None
+
+
+def iniciar_bot_background():
+    """Inicia el bot en un hilo secundario (usado por Django runserver)."""
+    global _bot_corriendo, _hilo_bot
+    if _bot_corriendo:
+        return
+    _bot_corriendo = True
+    _hilo_bot = threading.Thread(target=_bucle_polling, kwargs={"background": True}, daemon=True)
+    _hilo_bot.start()
+
+
+def _bucle_polling(stdout=None, background=False):
+    global _bot_corriendo
+    _bot_corriendo = True
+
+    token = telegram_notif.token_bot()
+    owner_id = telegram_notif.owner_id()
+
+    try:
+        r = requests.get(telegram_notif.url_api("getMe"), timeout=10)
+        if not r.ok:
+            msg = f"[URZA TELEGRAM] Token inválido: {r.text}"
+            if stdout:
+                stdout.write(msg)
+            logger.error(msg)
+            _bot_corriendo = False
+            return
+        bot_info = r.json().get("result", {})
+        bot_username = bot_info.get("username", "UrzaBot")
+    except Exception as e:
+        msg = f"[URZA TELEGRAM] Error conectando con Telegram: {e}"
+        if stdout:
+            stdout.write(msg)
+        logger.error(msg)
+        _bot_corriendo = False
+        return
+
+    banner = (
+        f"\n=======================================================\n"
+        f"  URZA TELEGRAM BOT ACTIVO (@{bot_username})\n"
+        f"  Modo: Long Polling (PC Local{' - AutoStart' if background else ''})\n"
+        f"  Dueño ID: {owner_id or '(No configurado)'}\n"
+        f"  Presioná Ctrl+C para detener.\n"
+        f"=======================================================\n"
+    )
+    if stdout:
+        stdout.write(banner)
+    else:
+        print(banner, flush=True)
+
+    # Enviar saludo inicial al dueño y al grupo para confirmar que está operativo
+    try:
+        telegram_notif.notificar_inicio(bot_username)
+    except Exception as e:
+        logger.warning(f"No se pudo enviar notificación de inicio: {e}")
+
+    cmd_handler = Command()
+    offset = 0
+
+    try:
+        while _bot_corriendo:
+            try:
+                params = {"offset": offset, "timeout": 25}
+                r = requests.get(telegram_notif.url_api("getUpdates"), params=params, timeout=30)
+                if not r.ok:
+                    time.sleep(2)
+                    continue
+
+                updates = r.json().get("result", [])
+                for u in updates:
+                    offset = max(offset, u["update_id"] + 1)
+                    cmd_handler.procesar_update(u, bot_username, owner_id)
+
+            except requests.exceptions.RequestException:
+                time.sleep(3)
+            except Exception as e:
+                logger.error(f"[URZA TELEGRAM] Error en bucle: {e}")
+                time.sleep(2)
+    finally:
+        try:
+            telegram_notif.notificar_detencion()
+        except Exception:
+            pass
+        _bot_corriendo = False
 
 
 class Command(BaseCommand):
@@ -35,52 +127,10 @@ class Command(BaseCommand):
             ))
             return
 
-        token = telegram_notif.token_bot()
-        owner_id = telegram_notif.owner_id()
-
-        # Obtener información del bot
         try:
-            r = requests.get(telegram_notif.url_api("getMe"), timeout=10)
-            if not r.ok:
-                self.stdout.write(self.style.ERROR(f"[URZA TELEGRAM] Token inválido: {r.text}"))
-                return
-            bot_info = r.json().get("result", {})
-            bot_username = bot_info.get("username", "UrzaBot")
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"[URZA TELEGRAM] Error conectando con Telegram: {e}"))
-            return
-
-        self.stdout.write(self.style.SUCCESS(
-            f"\n=======================================================\n"
-            f"  URZA TELEGRAM BOT ACTIVO (@{bot_username})\n"
-            f"  Modo: Long Polling (PC Local)\n"
-            f"  Dueño ID: {owner_id or '(No configurado)'}\n"
-            f"  Presioná Ctrl+C para detener.\n"
-            f"=======================================================\n"
-        ))
-
-        offset = 0
-        while True:
-            try:
-                params = {"offset": offset, "timeout": 25}
-                r = requests.get(telegram_notif.url_api("getUpdates"), params=params, timeout=30)
-                if not r.ok:
-                    time.sleep(2)
-                    continue
-
-                updates = r.json().get("result", [])
-                for u in updates:
-                    offset = max(offset, u["update_id"] + 1)
-                    self.procesar_update(u, bot_username, owner_id)
-
-            except requests.exceptions.RequestException:
-                time.sleep(3)
-            except KeyboardInterrupt:
-                self.stdout.write(self.style.WARNING("\n[URZA TELEGRAM] Bot detenido por el usuario."))
-                break
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"[URZA TELEGRAM] Error en bucle: {e}"))
-                time.sleep(2)
+            _bucle_polling(stdout=self.stdout, background=False)
+        except KeyboardInterrupt:
+            self.stdout.write(self.style.WARNING("\n[URZA TELEGRAM] Bot detenido por el usuario."))
 
     def enviar_accion(self, chat_id: int | str, action: str = "typing"):
         try:
@@ -154,6 +204,23 @@ class Command(BaseCommand):
                 )
                 telegram_notif.enviar_mensaje(chat_id, ayuda_admin)
                 return
+
+        # Comprobación rápida de conectividad / ping (abierto a todos)
+        if texto_raw.lower() in ("/ping", "ping"):
+            telegram_notif.enviar_mensaje(chat_id, "🏓 *¡Pong!* URZA está 100% activo y operativo en tu PC local.")
+            return
+
+        if texto_raw.lower() in ("/estado", "estado"):
+            from tienda import base
+            estado_msg = (
+                f"⚡ *ESTADO DEL SERVICIO URZA*\n\n"
+                f"• *Bot Telegram:* 🟢 En línea (@{bot_username})\n"
+                f"• *Servidor:* PC Local\n"
+                f"• *Hora del servidor:* {base.ahora().strftime('%d/%m/%Y %H:%M:%S')}\n"
+                f"• *Base de datos:* Conectada y lista\n"
+            )
+            telegram_notif.enviar_mensaje(chat_id, estado_msg)
+            return
 
         # Comandos básicos de bienvenida
         if texto_raw in ("/start", "/help", "/ayuda"):
