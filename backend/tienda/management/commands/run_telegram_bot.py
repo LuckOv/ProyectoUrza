@@ -404,10 +404,20 @@ class Command(BaseCommand):
         thread_id = f"tg_{chat_id}"
 
         try:
-            resultado = app_graph.invoke(
-                {"messages": [HumanMessage(content=texto_raw)]},
-                config={"configurable": {"thread_id": thread_id}},
-            )
+            try:
+                resultado = app_graph.invoke(
+                    {"messages": [HumanMessage(content=texto_raw)]},
+                    config={"configurable": {"thread_id": thread_id}},
+                )
+            except Exception as e_invoke:
+                # Si ocurrió una alucinación de nombre de herramienta de Groq o error de formato,
+                # reintentar limpiando el historial o forzando un turno fresco con fallback
+                logger.warning(f"[URZA TELEGRAM] Error en invoke con thread_id {thread_id}: {e_invoke}. Reintentando con turno fresco...")
+                resultado = app_graph.invoke(
+                    {"messages": [HumanMessage(content=texto_raw)]},
+                    config={"configurable": {"thread_id": f"{thread_id}_retry"}},
+                )
+
             mensajes = resultado.get("messages", [])
             texto_respuesta = ""
             if mensajes:

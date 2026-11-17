@@ -98,6 +98,9 @@ FLUJO DE COMPRA (no hay cuentas de usuario: todo se hace por este chat):
 ESTILO DE RESPUESTA:
 Responde en español rioplatense, en dos o tres oraciones como máximo. Da el dato
 concreto (cantidad, edición, precio) sin rodeos ni explicaciones de cómo lo buscaste.
+
+IMPORTANTE SOBRE HERRAMIENTAS:
+- Solo llamá a las herramientas provistas explícitamente en el catálogo con su nombre exacto en snake_case (ej: consultar_precio_cardmarket, consultar_stock_local, consultar_datos_carta, consultar_reglas_mtg, consultar_lore_mtg). NUNCA inventes nombres de herramientas como 'consultapricecardmarket' o 'check_price'.
 """
 
 
